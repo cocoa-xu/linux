@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: GPL-2.0-only
+config WLAN_VENDOR_AICSEMI
+	bool "AICSemi devices"
+	default y
+	help
+	  If you have a wireless card belonging to this class, say Y.
+
+if WLAN_VENDOR_AICSEMI
+
+config AIC8800
+	tristate "AICSemi AIC8800 SDIO Wi-Fi"
+	depends on CFG80211 && MMC && m
+	help
+	  Vendor driver for the AICSemi AIC8800 family (AIC8800D80) on
+	  SDIO, ported from the Sipeed AX620E SDK. Builds the aic8800_bsp
+	  and aic8800_fdrv modules; firmware is read from the directory
+	  given by the aic8800_bsp aic_fw_path parameter.
+
+endif
