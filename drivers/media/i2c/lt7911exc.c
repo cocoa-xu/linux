@@ -4,8 +4,9 @@
  *
  * The bridge runs its own firmware from flash: it trains the DisplayPort
  * link, converts the video to CSI-2 YUV422 8-bit and reports the detected
- * timings through a register page. The host only reads that page, on the
- * interrupt the firmware raises when the input appears or disappears.
+ * timings and the audio sample rate through a register page. The host reads
+ * that page on the interrupt the firmware raises when the video or the
+ * audio appears or disappears.
  */
 
 #include <linux/delay.h>
@@ -23,6 +24,8 @@
 #include <media/v4l2-event.h>
 #include <media/v4l2-fwnode.h>
 
+#include <uapi/linux/lt7911exc.h>
+
 #define LT7911EXC_PAGE_SELECT		0xff
 
 #define REG_FW_VERSION			CCI_REG24(0xe081)
@@ -36,6 +39,7 @@
 #define REG_V_TOTAL			CCI_REG16(0xe08a)
 #define REG_H_ACTIVE			CCI_REG16(0xe08c)
 #define REG_V_ACTIVE			CCI_REG16(0xe08e)
+#define REG_AUDIO_RATE			CCI_REG8(0xe0ad)	/* kHz */
 
 #define LT7911EXC_LANES			4
 
@@ -72,11 +76,35 @@ static const struct regmap_config lt7911exc_regmap_config = {
 	.num_ranges = ARRAY_SIZE(lt7911exc_ranges),
 };
 
+static const struct v4l2_ctrl_config lt7911exc_ctrl_audio_rate = {
+	.id = LT7911EXC_CID_AUDIO_SAMPLING_RATE,
+	.name = "Audio sampling rate",
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.min = 0,
+	.max = 768000,
+	.step = 1,
+	.def = 0,
+	.flags = V4L2_CTRL_FLAG_READ_ONLY,
+};
+
+static const struct v4l2_ctrl_config lt7911exc_ctrl_audio_present = {
+	.id = LT7911EXC_CID_AUDIO_PRESENT,
+	.name = "Audio present",
+	.type = V4L2_CTRL_TYPE_BOOLEAN,
+	.min = 0,
+	.max = 1,
+	.step = 1,
+	.def = 0,
+	.flags = V4L2_CTRL_FLAG_READ_ONLY,
+};
+
 struct lt7911exc {
 	struct v4l2_subdev sd;
 	struct media_pad pad;
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct v4l2_ctrl *pixel_rate;
+	struct v4l2_ctrl *audio_rate;
+	struct v4l2_ctrl *audio_present;
 	struct regmap *regmap;
 	struct gpio_desc *reset_gpio;
 	/* Detected input timings; zero width when there is no signal. */
@@ -132,6 +160,33 @@ static s64 lt7911exc_pixel_rate(const struct v4l2_bt_timings *bt)
 	/* 16 bits per pixel spread over the data lanes. */
 	return div_u64((u64)bt->width * bt->height * lt7911exc_fps(bt) * 16,
 		       LT7911EXC_LANES) ?: 1;
+}
+
+/* The firmware reports the rate in whole kHz. */
+static u32 lt7911exc_audio_hz(u8 khz)
+{
+	switch (khz) {
+	case 44:
+		return 44100;
+	case 88:
+		return 88200;
+	case 176:
+		return 176400;
+	default:
+		return khz * 1000;
+	}
+}
+
+static void lt7911exc_update_audio(struct lt7911exc *lt, bool present)
+{
+	u64 khz = 0;
+	u32 rate = 0;
+
+	if (present && !cci_read(lt->regmap, REG_AUDIO_RATE, &khz, NULL))
+		rate = lt7911exc_audio_hz(khz);
+
+	v4l2_ctrl_s_ctrl(lt->audio_rate, rate);
+	v4l2_ctrl_s_ctrl(lt->audio_present, rate != 0);
 }
 
 static void lt7911exc_fill_format(struct lt7911exc *lt,
@@ -339,8 +394,18 @@ static irqreturn_t lt7911exc_irq(int irq, void *data)
 	if (ret)
 		return IRQ_NONE;
 
-	if (type == INT_VIDEO_OFF || type == INT_VIDEO_READY)
+	switch (type) {
+	case INT_VIDEO_OFF:
+	case INT_VIDEO_READY:
 		lt7911exc_update(lt);
+		break;
+	case INT_AUDIO_OFF:
+		lt7911exc_update_audio(lt, false);
+		break;
+	case INT_AUDIO_READY:
+		lt7911exc_update_audio(lt, true);
+		break;
+	}
 
 	return IRQ_HANDLED;
 }
@@ -366,6 +431,33 @@ static int lt7911exc_check_endpoint(struct device *dev)
 	return 0;
 }
 
+static int lt7911exc_init_controls(struct lt7911exc *lt)
+{
+	struct v4l2_ctrl_handler *hdl = &lt->ctrl_handler;
+	s64 rate = lt7911exc_pixel_rate(&lt->detected.bt);
+
+	v4l2_ctrl_handler_init(hdl, 3);
+	lt->pixel_rate = v4l2_ctrl_new_std(hdl, NULL, V4L2_CID_PIXEL_RATE, 1,
+					   INT_MAX, 1, rate);
+	lt->audio_rate = v4l2_ctrl_new_custom(hdl, &lt7911exc_ctrl_audio_rate,
+					      NULL);
+	lt->audio_present = v4l2_ctrl_new_custom(hdl,
+						 &lt7911exc_ctrl_audio_present,
+						 NULL);
+	if (hdl->error) {
+		int ret = hdl->error;
+
+		v4l2_ctrl_handler_free(hdl);
+		return ret;
+	}
+	lt->sd.ctrl_handler = hdl;
+
+	/* The interrupt for audio that started before probe has been missed. */
+	lt7911exc_update_audio(lt, true);
+
+	return 0;
+}
+
 static void lt7911exc_cleanup(void *data)
 {
 	struct lt7911exc *lt = data;
@@ -380,7 +472,6 @@ static int lt7911exc_probe(struct i2c_client *client)
 	struct device *dev = &client->dev;
 	struct lt7911exc *lt;
 	u64 version;
-	s64 rate;
 	int ret;
 
 	lt = devm_kzalloc(dev, sizeof(*lt), GFP_KERNEL);
@@ -419,17 +510,9 @@ static int lt7911exc_probe(struct i2c_client *client)
 	lt7911exc_read_timings(lt);
 	lt->timings = lt->detected;
 
-	v4l2_ctrl_handler_init(&lt->ctrl_handler, 1);
-	rate = lt7911exc_pixel_rate(&lt->detected.bt);
-	lt->pixel_rate = v4l2_ctrl_new_std(&lt->ctrl_handler, NULL,
-					   V4L2_CID_PIXEL_RATE, 1, INT_MAX, 1,
-					   rate);
-	if (lt->ctrl_handler.error) {
-		ret = lt->ctrl_handler.error;
-		v4l2_ctrl_handler_free(&lt->ctrl_handler);
+	ret = lt7911exc_init_controls(lt);
+	if (ret)
 		return ret;
-	}
-	lt->sd.ctrl_handler = &lt->ctrl_handler;
 
 	ret = media_entity_pads_init(&lt->sd.entity, 1, &lt->pad);
 	if (ret) {
@@ -460,9 +543,10 @@ static int lt7911exc_probe(struct i2c_client *client)
 	if (ret)
 		return dev_err_probe(dev, ret, "failed to register subdev\n");
 
-	dev_info(dev, "firmware %06llx, input %ux%u@%u\n", version,
+	dev_info(dev, "firmware %06llx, input %ux%u@%u, audio %d Hz\n", version,
 		 lt->detected.bt.width, lt->detected.bt.height,
-		 lt7911exc_fps(&lt->detected.bt));
+		 lt7911exc_fps(&lt->detected.bt),
+		 v4l2_ctrl_g_ctrl(lt->audio_rate));
 
 	return 0;
 }
