@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/watchdog/axera,ax620e-wdt.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E watchdog
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+allOf:
+  - $ref: watchdog.yaml#
+
+properties:
+  compatible:
+    const: axera,ax620e-wdt
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: APB clock
+      - description: Counter clock
+
+  clock-names:
+    items:
+      - const: pclk
+      - const: wdt
+
+  resets:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - clock-names
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/axera,ax620e-periph-sys.h>
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+    #include <dt-bindings/reset/axera,ax620e-periph-sys.h>
+
+    watchdog@4840000 {
+        compatible = "axera,ax620e-wdt";
+        reg = <0x04840000 0x400>;
+        interrupts = <GIC_SPI 149 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&periph_sys AX620E_PERIPH_PCLK_WDT0>,
+                 <&periph_sys AX620E_PERIPH_CLK_WDT0>;
+        clock-names = "pclk", "wdt";
+        resets = <&periph_sys AX620E_PERIPH_RST_WDT0>;
+    };

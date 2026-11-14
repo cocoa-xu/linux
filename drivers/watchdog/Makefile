@@ -44,6 +44,7 @@ obj-$(CONFIG_ARMADA_37XX_WATCHDOG) += armada_37xx_wdt.o
 obj-$(CONFIG_AIROHA_WATCHDOG) += airoha_wdt.o
 obj-$(CONFIG_ASM9260_WATCHDOG) += asm9260_wdt.o
 obj-$(CONFIG_AT91RM9200_WATCHDOG) += at91rm9200_wdt.o
+obj-$(CONFIG_AX620E_WATCHDOG) += ax620e_wdt.o
 obj-$(CONFIG_AT91SAM9X_WATCHDOG) += at91sam9_wdt.o
 obj-$(CONFIG_CADENCE_WATCHDOG) += cadence_wdt.o
 obj-$(CONFIG_OMAP_WATCHDOG) += omap_wdt.o

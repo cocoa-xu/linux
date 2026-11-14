@@ -507,6 +507,17 @@ config ASM9260_WATCHDOG
 	  Watchdog timer embedded into Alphascale asm9260 chips. This will
 	  reboot your system when the timeout is reached.
 
+config AX620E_WATCHDOG
+	tristate "Axera AX620E watchdog"
+	depends on ARCH_AXERA || COMPILE_TEST
+	depends on OF
+	select WATCHDOG_CORE
+	help
+	  Watchdog timer of Axera AX620E SoCs. It also restarts the system.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called ax620e_wdt.
+
 config AT91RM9200_WATCHDOG
 	tristate "AT91RM9200 watchdog"
 	depends on (SOC_AT91RM9200 && MFD_SYSCON) || COMPILE_TEST
