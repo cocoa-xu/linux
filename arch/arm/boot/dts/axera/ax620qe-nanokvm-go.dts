@@ -6,7 +6,9 @@
 
 /dts-v1/;
 
+#include <dt-bindings/clock/axera,ax620e-vpu-sys.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/reset/axera,ax620e-vpu-sys.h>
 
 / {
 	model = "Sipeed NanoKVM-Go";
@@ -52,6 +54,49 @@
 			size = <0x10000000>;
 			linux,cma-default;
 		};
+	};
+
+	/* PLL outputs set up by the boot firmware (no PLL driver yet). */
+	cpll_208m: clock-208000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <208000000>;
+		clock-output-names = "cpll_208m";
+	};
+
+	cpll_312m: clock-312000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <312000000>;
+		clock-output-names = "cpll_312m";
+	};
+
+	epll_375m: clock-375000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <375000000>;
+		clock-output-names = "epll_375m";
+	};
+
+	cpll_416m: clock-416000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <416000000>;
+		clock-output-names = "cpll_416m";
+	};
+
+	epll_500m: clock-500000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <500000000>;
+		clock-output-names = "epll_500m";
+	};
+
+	npll_533m: clock-533333333 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <533333333>;
+		clock-output-names = "npll_533m";
 	};
 
 	sd_clk: clock-200000000 {
@@ -123,6 +168,25 @@
 			axera,comm-glb = <&comm_glb>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&mipi_rx_pins>;
+		};
+
+		jpeg-encoder@4000000 {
+			compatible = "axera,ax620e-jenc";
+			reg = <0x04000000 0x10000>;
+			interrupts = <GIC_SPI 91 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&vpu_sys AX620E_VPU_CLK_JENC>;
+			resets = <&vpu_sys AX620E_VPU_RST_JENC>;
+		};
+
+		vpu_sys: clock-controller@4030000 {
+			compatible = "axera,ax620e-vpu-sys";
+			reg = <0x04030000 0x1000>;
+			clocks = <&cpll_208m>, <&cpll_312m>, <&epll_375m>,
+				 <&cpll_416m>, <&epll_500m>, <&npll_533m>;
+			clock-names = "cpll_208m", "cpll_312m", "epll_375m",
+				      "cpll_416m", "epll_500m", "npll_533m";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
 		};
 
 		uart3: serial@6080000 {
