@@ -6,10 +6,12 @@
 
 /dts-v1/;
 
+#include <dt-bindings/clock/axera,ax620e-flash-sys.h>
 #include <dt-bindings/clock/axera,ax620e-periph-sys.h>
 #include <dt-bindings/clock/axera,ax620e-vpu-sys.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/reset/axera,ax620e-flash-sys.h>
 #include <dt-bindings/reset/axera,ax620e-periph-sys.h>
 #include <dt-bindings/reset/axera,ax620e-vpu-sys.h>
 
@@ -21,6 +23,8 @@
 	interrupt-parent = <&gic>;
 
 	aliases {
+		mmc0 = &sd;
+		mmc1 = &sdio;
 		serial3 = &uart3;
 	};
 
@@ -89,6 +93,13 @@
 		clock-output-names = "epll_50m";
 	};
 
+	epll_100m: clock-100000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <100000000>;
+		clock-output-names = "epll_100m";
+	};
+
 	cpll_156m: clock-156000000 {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
@@ -127,6 +138,20 @@
 		clock-output-names = "epll_375m";
 	};
 
+	epll_250m: clock-250000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <250000000>;
+		clock-output-names = "epll_250m";
+	};
+
+	npll_400m: clock-400000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <400000000>;
+		clock-output-names = "npll_400m";
+	};
+
 	cpll_416m: clock-416000000 {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
@@ -148,17 +173,21 @@
 		clock-output-names = "npll_533m";
 	};
 
-	sd_clk: clock-200000000 {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <200000000>;
-	};
-
 	/* AIC8800D80 Wi-Fi/BT: GPIO1 line 28 powers it up when high. */
 	wifi_pwrseq: wifi-pwrseq {
 		compatible = "mmc-pwrseq-simple";
 		reset-gpios = <&gpio1 28 GPIO_ACTIVE_LOW>;
 		post-power-on-delay-ms = <50>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&wifi_power_pins>;
+	};
+
+	usb2_phy: usb-phy {
+		compatible = "axera,ax620e-usb2-phy";
+		axera,flash-sys = <&flash_sys>;
+		clocks = <&flash_sys AX620E_FLASH_CLK_USB2_REF_ALT>;
+		resets = <&flash_sys AX620E_FLASH_RST_USB2_PHY>;
+		#phy-cells = <0>;
 	};
 
 	/* Node the out-of-tree AIC8800 driver looks for; power is mmc-pwrseq. */
@@ -260,6 +289,8 @@
 			resets = <&periph_sys AX620E_PERIPH_RST_I2C0>;
 			clock-frequency = <400000>;
 			i2c-sda-hold-time-ns = <500>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&i2c0_pins>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 
@@ -268,6 +299,8 @@
 				reg = <0x41>;
 				interrupts-extended = <&gpio1 0 IRQ_TYPE_EDGE_FALLING>;
 				reset-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;
+				pinctrl-names = "default";
+				pinctrl-0 = <&lt7911exc_pins>;
 
 				port {
 					lt7911exc_out: endpoint {
@@ -297,6 +330,78 @@
 				      "cpll_156m", "cpll_208m", "pclk_top";
 			#clock-cells = <1>;
 			#reset-cells = <1>;
+		};
+
+		/*
+		 * Pad groups: one register per pin, function in [18:16],
+		 * pull-up bit 7, pull-down bit 6, drive strength [3:0].
+		 */
+		pinctrl@2304000 {
+			compatible = "pinctrl-single";
+			reg = <0x02304000 0x100>;
+			#pinctrl-cells = <1>;
+			pinctrl-single,register-width = <32>;
+			pinctrl-single,function-mask = <0x700ff>;
+
+			i2c0_pins: i2c0-pins {
+				pinctrl-single,pins = <
+					0x0c 0x83	/* I2C0_SCL */
+					0x18 0x83	/* I2C0_SDA */
+				>;
+			};
+
+			lt7911exc_pins: lt7911exc-pins {
+				pinctrl-single,pins = <
+					0x6c 0x60083	/* UART2_TXD: GPIO1_A0, interrupt */
+					0x78 0x60003	/* UART2_RXD: GPIO1_A1, reset */
+				>;
+			};
+		};
+
+		pinctrl@104f0000 {
+			compatible = "pinctrl-single";
+			reg = <0x104f0000 0x80>;
+			#pinctrl-cells = <1>;
+			pinctrl-single,register-width = <32>;
+			pinctrl-single,function-mask = <0x700ff>;
+
+			wifi_power_pins: wifi-power-pins {
+				pinctrl-single,pins = <
+					0x6c 0x60003	/* EPHY_LED0: GPIO1_A28 */
+				>;
+			};
+		};
+
+		pinctrl@104f2000 {
+			compatible = "pinctrl-single";
+			reg = <0x104f2000 0x60>;
+			#pinctrl-cells = <1>;
+			pinctrl-single,register-width = <32>;
+			pinctrl-single,function-mask = <0x700ff>;
+
+			sdio_pins: sdio-pins {
+				pinctrl-single,pins = <
+					0x0c 0x83	/* SDIO_DAT0 */
+					0x18 0x83	/* SDIO_DAT1 */
+					0x24 0x03	/* SDIO_CLK */
+					0x30 0x83	/* SDIO_CMD */
+					0x3c 0x83	/* SDIO_DAT2 */
+					0x48 0x83	/* SDIO_DAT3 */
+				>;
+			};
+		};
+
+		flash_sys: clock-controller@10030000 {
+			compatible = "axera,ax620e-flash-sys";
+			reg = <0x10030000 0x9000>;
+			clocks = <&cpll_24m>, <&epll_100m>, <&cpll_156m>, <&cpll_208m>,
+				 <&epll_250m>, <&cpll_312m>, <&npll_400m>, <&pclk_top>;
+			clock-names = "cpll_24m", "epll_100m", "cpll_156m", "cpll_208m",
+				      "epll_250m", "cpll_312m", "npll_400m", "pclk_top";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+			assigned-clocks = <&flash_sys AX620E_FLASH_CLK_BUS_SEL>;
+			assigned-clock-parents = <&cpll_312m>;
 		};
 
 		/* MIPI D-PHY RX pads: function 0 is the D-PHY. */
@@ -367,10 +472,6 @@
 			reg-io-width = <4>;
 		};
 
-		/*
-		 * SD pad group G9: one register per pin, function in [18:16],
-		 * pull-up bit 7, pull-down bit 6, drive strength [3:0].
-		 */
 		pinctrl@104f1000 {
 			compatible = "pinctrl-single";
 			reg = <0x104f1000 0x60>;
@@ -390,11 +491,20 @@
 			};
 		};
 
-		mmc@104e0000 {
-			compatible = "cdns,sd4hc";
+		sd: mmc@104e0000 {
+			compatible = "axera,ax620e-sd4hc", "cdns,sd4hc";
 			reg = <0x104e0000 0x10000>;
 			interrupts = <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&sd_clk>;
+			clocks = <&flash_sys AX620E_FLASH_CLK_SD_CARD>,
+				 <&flash_sys AX620E_FLASH_ACLK_SD>,
+				 <&flash_sys AX620E_FLASH_PCLK_SD>;
+			resets = <&flash_sys AX620E_FLASH_RST_SD_CARD>,
+				 <&flash_sys AX620E_FLASH_RST_SD_AXI>,
+				 <&flash_sys AX620E_FLASH_RST_SD_APB>;
+			assigned-clocks = <&flash_sys AX620E_FLASH_CLK_SD_CARD_SEL>,
+					  <&flash_sys AX620E_FLASH_CLK_SD_CARD_DIV>;
+			assigned-clock-parents = <&npll_400m>, <0>;
+			assigned-clock-rates = <0>, <200000000>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&sd_pins>;
 			bus-width = <4>;
@@ -414,11 +524,22 @@
 			cdns,phy-dll-delay-sdclk = <0>;
 		};
 
-		mmc@104d0000 {
-			compatible = "cdns,sd4hc";
+		sdio: mmc@104d0000 {
+			compatible = "axera,ax620e-sd4hc", "cdns,sd4hc";
 			reg = <0x104d0000 0x10000>;
 			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&sd_clk>;
+			clocks = <&flash_sys AX620E_FLASH_CLK_SDIO_CARD>,
+				 <&flash_sys AX620E_FLASH_ACLK_SDIO>,
+				 <&flash_sys AX620E_FLASH_PCLK_SDIO>;
+			resets = <&flash_sys AX620E_FLASH_RST_SDIO_CARD>,
+				 <&flash_sys AX620E_FLASH_RST_SDIO_AXI>,
+				 <&flash_sys AX620E_FLASH_RST_SDIO_APB>;
+			assigned-clocks = <&flash_sys AX620E_FLASH_CLK_SDIO_CARD_SEL>,
+					  <&flash_sys AX620E_FLASH_CLK_SDIO_CARD_DIV>;
+			assigned-clock-parents = <&npll_400m>, <0>;
+			assigned-clock-rates = <0>, <200000000>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&sdio_pins>;
 			mmc-pwrseq = <&wifi_pwrseq>;
 			bus-width = <4>;
 			max-frequency = <50000000>;
@@ -444,10 +565,17 @@
 			compatible = "snps,dwc3";
 			reg = <0x08000000 0x100000>;
 			interrupts = <GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&flash_sys AX620E_FLASH_CLK_USB2_BUS>,
+				 <&flash_sys AX620E_FLASH_CLK_USB2_REF>;
+			clock-names = "bus_early", "ref";
+			resets = <&flash_sys AX620E_FLASH_RST_USB2_VCC>;
+			phys = <&usb2_phy>;
+			phy-names = "usb2-phy";
 			dr_mode = "peripheral";
 			maximum-speed = "high-speed";
 			phy_type = "utmi";
 			snps,dis-u2-freeclk-exists-quirk;
+			snps,gfladj-refclk-lpm-sel-quirk;
 		};
 	};
 };
