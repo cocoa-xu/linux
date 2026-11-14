@@ -1085,6 +1085,7 @@ static const struct i2s_platform_data jh7110_i2srx_data = {
 };
 
 static const struct of_device_id dw_i2s_of_match[] = {
+	{ .compatible = "axera,ax620e-i2s", },
 	{ .compatible = "snps,designware-i2s",	 },
 	{ .compatible = "starfive,jh7110-i2stx0", .data = &jh7110_i2stx0_data, },
 	{ .compatible = "starfive,jh7110-i2stx1", .data = &jh7110_i2stx1_data,},
