@@ -97,7 +97,7 @@
 #define DPHY_HSRX_CFG1			0x0d4
 #define DPHY_HSRX_PRE_SET		0x0d8
 #define DPHY_HSRX_PRE_CLR		0x0dc
-#define DPHY_DESKEW_RST_CLR		0x0ec
+#define DPHY_DESKEW_RST_SET		0x0e8
 #define DPHY_DESKEW_RST			GENMASK(13, 10)
 #define DPHY_LANE_EN_SET		0x110
 #define DPHY_LANE_EN_CLR		0x114
@@ -324,13 +324,13 @@ static void ax_vin_mipi_start(struct ax_vin *vin)
 	unsigned int i;
 
 	writel(CSI_STREAM_STOP, csi + CSI_STREAM_CTRL);
-	writel(DPHY_DESKEW_RST, dphy + DPHY_DESKEW_RST_CLR);
+	writel(DPHY_DESKEW_RST, dphy + DPHY_DESKEW_RST_SET);
 	ax_vin_dphy_power(vin, false);
 	writel(CSI_STREAM_SOFT_RST | CSI_STREAM_STOP, csi + CSI_STREAM_CTRL);
 	writel(0x3, csi + CSI_RX_SOFT_RST);
 	writel(GLB_RST0_DPHYRX, glb + GLB_RST0_ASSERT);
 	writel(GLB_RST0_CSIRX, glb + GLB_RST0_DEASSERT);
-	writel(DPHY_DESKEW_RST, dphy + DPHY_DESKEW_RST_CLR);
+	writel(DPHY_DESKEW_RST, dphy + DPHY_DESKEW_RST_SET);
 	regmap_write(vin->comm, COMM_RST_DEASSERT, COMM_RST_DPHYRX_TLB);
 
 	writel(GLB_EB1_CSIRX_PCLK | GLB_EB1_SYS_PIXEL, glb + GLB_EB1_SET);
@@ -366,6 +366,13 @@ static void ax_vin_mipi_start(struct ax_vin *vin)
 
 	msleep(25);
 	writel(GLB_RST0_DPHYRX, glb + GLB_RST0_DEASSERT);
+	/*
+	 * Keep lane deskew in reset, as the vendor driver does below 1.5 Gb/s.
+	 * The LT7911EXC sends no deskew sequence: running, deskew re-aligns
+	 * the lanes on video data, and after a line cut short by an input
+	 * change every later frame comes out shifted until the SoC is reset.
+	 */
+	writel(DPHY_DESKEW_RST, dphy + DPHY_DESKEW_RST_SET);
 	writel(DPHY_LANE_EN_ALL, dphy + DPHY_LANE_EN_SET);
 	writel(DPHY_LANE_EN_DATA, dphy + DPHY_LANE_EN_CLR);
 	writel(DPHY_LANE_EN_DATA, dphy + DPHY_LANE_EN_SET);
