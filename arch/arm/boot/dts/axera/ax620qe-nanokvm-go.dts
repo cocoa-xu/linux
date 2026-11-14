@@ -266,6 +266,16 @@
 			};
 		};
 
+		watchdog@4840000 {
+			compatible = "axera,ax620e-wdt";
+			reg = <0x04840000 0x400>;
+			interrupts = <GIC_SPI 149 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_PCLK_WDT0>,
+				 <&periph_sys AX620E_PERIPH_CLK_WDT0>;
+			clock-names = "pclk", "wdt";
+			resets = <&periph_sys AX620E_PERIPH_RST_WDT0>;
+		};
+
 		periph_sys: clock-controller@4870000 {
 			compatible = "axera,ax620e-periph-sys";
 			reg = <0x04870000 0x1000>;
