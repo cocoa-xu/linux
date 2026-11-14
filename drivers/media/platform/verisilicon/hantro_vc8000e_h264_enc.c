@@ -19,6 +19,7 @@ static int
 hantro_vc8000e_h264_enc_state_constrain(struct v4l2_h264_enc *enc,
 					struct v4l2_h264_enc_state *state)
 {
+	struct hantro_ctx *ctx = enc->private_data;
 	struct v4l2_ctrl_h264_sps *sps = &state->sps;
 	struct v4l2_ctrl_h264_pps *pps = &state->pps;
 	struct v4l2_ctrl_h264_encode_params *encode = &state->encode;
@@ -43,6 +44,11 @@ hantro_vc8000e_h264_enc_state_constrain(struct v4l2_h264_enc *enc,
 	}
 
 	sps->flags |= V4L2_H264_SPS_FLAG_DIRECT_8X8_INFERENCE;
+
+	if (ctx->dev->variant->h264_enc_fixed_num_lengths) {
+		sps->log2_max_frame_num_minus4 = 12;
+		sps->log2_max_pic_order_cnt_lsb_minus4 = 12;
+	}
 
 	/* PPS */
 

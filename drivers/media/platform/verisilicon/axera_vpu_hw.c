@@ -123,4 +123,5 @@ const struct hantro_variant ax620e_venc_variant = {
 	.num_irqs = ARRAY_SIZE(ax620e_venc_irqs),
 	.clk_names = ax620e_venc_clk_names,
 	.num_clocks = ARRAY_SIZE(ax620e_venc_clk_names),
+	.h264_enc_fixed_num_lengths = 1,
 };

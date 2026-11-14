@@ -78,6 +78,9 @@ struct hantro_irq {
  * @double_buffer:		core needs double buffering
  * @legacy_regs:		core uses legacy register set
  * @late_postproc:		postproc must be set up at the end of the job
+ * @h264_enc_fixed_num_lengths:	H.264 encoder writes frame_num and
+ *				pic_order_cnt_lsb with 16 bits whatever the
+ *				configured lengths
  * @shared_devices:		an array of device ids that cannot run concurrently
  */
 struct hantro_variant {
@@ -103,6 +106,7 @@ struct hantro_variant {
 	unsigned int double_buffer : 1;
 	unsigned int legacy_regs : 1;
 	unsigned int late_postproc : 1;
+	unsigned int h264_enc_fixed_num_lengths : 1;
 	const struct of_device_id *shared_devices;
 };
 
