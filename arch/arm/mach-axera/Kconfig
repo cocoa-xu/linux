@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+menuconfig ARCH_AXERA
+	bool "Axera SoCs"
+	depends on ARCH_MULTI_V7
+	select ARM_GIC
+	select HAVE_ARM_ARCH_TIMER
+	help
+	  Support for the Axera AX620E family (AX620Q, AX630C). These SoCs
+	  have Cortex-A53 cores that the vendor boot firmware starts in
+	  AArch32, a GIC-400 and the Arm architected timer, and are used in
+	  boards such as the Sipeed NanoKVM-Go.
