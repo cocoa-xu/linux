@@ -6,8 +6,11 @@
 
 /dts-v1/;
 
+#include <dt-bindings/clock/axera,ax620e-periph-sys.h>
 #include <dt-bindings/clock/axera,ax620e-vpu-sys.h>
+#include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/reset/axera,ax620e-periph-sys.h>
 #include <dt-bindings/reset/axera,ax620e-vpu-sys.h>
 
 / {
@@ -57,6 +60,44 @@
 	};
 
 	/* PLL outputs set up by the boot firmware (no PLL driver yet). */
+	rtc_32k: clock-32768 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <32768>;
+		clock-output-names = "rtc_32k";
+	};
+
+	cpll_24m: clock-24000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24000000>;
+		clock-output-names = "cpll_24m";
+	};
+
+	epll_50m: clock-50000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <50000000>;
+		clock-output-names = "epll_50m";
+	};
+
+	cpll_156m: clock-156000000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <156000000>;
+		clock-output-names = "cpll_156m";
+	};
+
+	/* APB clock of the peripherals (COMM_GLB 0x18 selects CPLL 208 MHz). */
+	pclk_top: clock-pclk-top {
+		compatible = "fixed-factor-clock";
+		#clock-cells = <0>;
+		clocks = <&cpll_208m>;
+		clock-mult = <1>;
+		clock-div = <1>;
+		clock-output-names = "pclk_top";
+	};
+
 	cpll_208m: clock-208000000 {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
@@ -137,6 +178,97 @@
 			reg = <0x02340000 0x1000>;
 		};
 
+		gpio0: gpio@4800000 {
+			compatible = "axera,ax620e-gpio";
+			reg = <0x04800000 0x400>;
+			interrupts = <GIC_SPI 114 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_CLK_GPIO0>,
+				 <&periph_sys AX620E_PERIPH_PCLK_GPIO0>;
+			resets = <&periph_sys AX620E_PERIPH_RST_GPIO0>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+
+		gpio1: gpio@4801000 {
+			compatible = "axera,ax620e-gpio";
+			reg = <0x04801000 0x400>;
+			interrupts = <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_CLK_GPIO1>,
+				 <&periph_sys AX620E_PERIPH_PCLK_GPIO1>;
+			resets = <&periph_sys AX620E_PERIPH_RST_GPIO1>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+
+		gpio2: gpio@6000000 {
+			compatible = "axera,ax620e-gpio";
+			reg = <0x06000000 0x400>;
+			interrupts = <GIC_SPI 116 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_CLK_GPIO2>,
+				 <&periph_sys AX620E_PERIPH_PCLK_GPIO2>;
+			resets = <&periph_sys AX620E_PERIPH_RST_GPIO2>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+
+		gpio3: gpio@6001000 {
+			compatible = "axera,ax620e-gpio";
+			reg = <0x06001000 0x400>;
+			interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_CLK_GPIO3>,
+				 <&periph_sys AX620E_PERIPH_PCLK_GPIO3>;
+			resets = <&periph_sys AX620E_PERIPH_RST_GPIO3>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			interrupt-controller;
+			#interrupt-cells = <2>;
+		};
+
+		i2c0: i2c@4850000 {
+			compatible = "snps,designware-i2c";
+			reg = <0x04850000 0x400>;
+			interrupts = <GIC_SPI 135 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_CLK_I2C0>,
+				 <&periph_sys AX620E_PERIPH_PCLK_I2C0>;
+			clock-names = "ref", "pclk";
+			resets = <&periph_sys AX620E_PERIPH_RST_I2C0>;
+			clock-frequency = <400000>;
+			i2c-sda-hold-time-ns = <500>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			video-bridge@41 {
+				compatible = "lontium,lt7911exc";
+				reg = <0x41>;
+				interrupts-extended = <&gpio1 0 IRQ_TYPE_EDGE_FALLING>;
+				reset-gpios = <&gpio1 1 GPIO_ACTIVE_LOW>;
+
+				port {
+					lt7911exc_out: endpoint {
+						remote-endpoint = <&vin_in>;
+						data-lanes = <1 2 3 4>;
+					};
+				};
+			};
+		};
+
+		periph_sys: clock-controller@4870000 {
+			compatible = "axera,ax620e-periph-sys";
+			reg = <0x04870000 0x1000>;
+			clocks = <&rtc_32k>, <&cpll_24m>, <&epll_50m>,
+				 <&cpll_156m>, <&cpll_208m>, <&pclk_top>;
+			clock-names = "rtc_32k", "cpll_24m", "epll_50m",
+				      "cpll_156m", "cpll_208m", "pclk_top";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+		};
+
 		/* MIPI D-PHY RX pads: function 0 is the D-PHY. */
 		pinctrl@2303000 {
 			compatible = "pinctrl-single";
@@ -168,6 +300,13 @@
 			axera,comm-glb = <&comm_glb>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&mipi_rx_pins>;
+
+			port {
+				vin_in: endpoint {
+					remote-endpoint = <&lt7911exc_out>;
+					data-lanes = <1 2 3 4>;
+				};
+			};
 		};
 
 		jpeg-encoder@4000000 {
