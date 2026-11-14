@@ -15,6 +15,7 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -49,6 +50,8 @@
  */
 #define GLB_CLK_SEL_ISP			GENMASK(12, 2)
 #define GLB_CLK_SEL_ISP_RUN		0x5ac
+#define GLB_EB0				0x004
+#define GLB_EB0_ISP			GENMASK(5, 2)
 #define GLB_EB0_SET			0x0d0
 #define GLB_EB0_CLR			0x0d4
 #define GLB_EB0_CFG_PHY			BIT(0)
@@ -120,7 +123,11 @@
 #define ISP_IRQ_EOF_GROUP		5
 #define ISP_IRQ_EOF			BIT(9)
 #define ISP_IRQ_MASK			0x150
-#define ISP_SOFT_RST			0x184
+/* AXI port of the IFE (write DMA): writing all ones stops it. */
+#define ISP_AXI_CTRL			0x184
+#define ISP_AXI_STOP			GENMASK(31, 0)
+/* Nonzero while writes are pending. */
+#define ISP_AXI_STATUS			0x188
 #define ISP_START			0x1b8
 /* Processing blocks, unused in bypass: only reset and interrupt masks. */
 #define ISP_SUB1			0x80000
@@ -257,8 +264,8 @@ static void ax_vin_field(void __iomem *base, u32 set, u32 clr, u32 mask,
 
 static void ax_vin_isp_reset(struct ax_vin *vin)
 {
-	static const u32 soft_rst[] = {
-		ISP_SOFT_RST, ISP_SUB1 + 0x144, ISP_SUB2 + 0x148,
+	static const u32 axi_ctrl[] = {
+		ISP_AXI_CTRL, ISP_SUB1 + 0x144, ISP_SUB2 + 0x148,
 	};
 	void __iomem *glb = vin->glb, *isp = vin->isp;
 	unsigned int i;
@@ -270,14 +277,14 @@ static void ax_vin_isp_reset(struct ax_vin *vin)
 	writel(GLB_RST0_ALL, glb + GLB_RST0_DEASSERT);
 	writel(GLB_RST1_ALL, glb + GLB_RST1_DEASSERT);
 
-	for (i = 0; i < ARRAY_SIZE(soft_rst); i++)
-		writel(0xffffffff, isp + soft_rst[i]);
+	for (i = 0; i < ARRAY_SIZE(axi_ctrl); i++)
+		writel(ISP_AXI_STOP, isp + axi_ctrl[i]);
 	writel(GLB_RST0_PULSE, glb + GLB_RST0_ASSERT);
 	writel(GLB_RST0_PULSE, glb + GLB_RST0_DEASSERT);
 	writel(GLB_RST1_ALL, glb + GLB_RST1_ASSERT);
 	writel(GLB_RST1_ALL, glb + GLB_RST1_DEASSERT);
-	for (i = 0; i < ARRAY_SIZE(soft_rst); i++)
-		writel(0, isp + soft_rst[i]);
+	for (i = 0; i < ARRAY_SIZE(axi_ctrl); i++)
+		writel(0, isp + axi_ctrl[i]);
 
 	for (i = 1; i <= ISP_IRQ_GROUPS; i++)
 		writel(0, isp + ISP_IRQ_EN(i));
@@ -406,6 +413,20 @@ static void ax_vin_hw_stop(struct ax_vin *vin)
 	writel(CSI_STREAM_STOP, vin->csi + CSI_STREAM_CTRL);
 	/* Let the write DMA drain what it already received. */
 	usleep_range(1000, 2000);
+	/*
+	 * Then stop its AXI port and wait for the writes in flight, as the
+	 * vendor driver does before a reset. The ISP only answers while
+	 * clocked: at probe after a cold boot it is not.
+	 */
+	if ((readl(glb + GLB_EB0) & GLB_EB0_ISP) == GLB_EB0_ISP) {
+		u32 status;
+
+		writel(ISP_AXI_STOP, isp + ISP_AXI_CTRL);
+		if (readl_poll_timeout(isp + ISP_AXI_STATUS, status, !status,
+				       200, 10 * USEC_PER_MSEC))
+			dev_warn(vin->dev, "AXI writes still pending (%#x)\n",
+				 status);
+	}
 	/*
 	 * Unlike the vendor driver, leave the D-PHY TLB clock on: the D-PHY
 	 * registers only respond with it, and the next start pulses the
