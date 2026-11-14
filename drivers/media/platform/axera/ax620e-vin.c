@@ -249,6 +249,8 @@ struct ax_vin {
 	struct v4l2_async_notifier notifier;
 	/* The CSI-2 transmitter feeding the receiver, once bound. */
 	struct v4l2_subdev *source;
+	/* The source's controls, offered on the video node. */
+	struct v4l2_ctrl_handler ctrl_handler;
 	struct video_device vdev;
 	struct vb2_queue queue;
 	/* Serializes the ioctls and the vb2 queue. */
@@ -984,6 +986,41 @@ static int ax_vin_dv_timings_cap(struct file *file, void *priv,
 	return v4l2_subdev_call(vin->source, pad, dv_timings_cap, cap);
 }
 
+/*
+ * The bridge keeps its EDID in flash: reading it takes over a second and
+ * writing it several. Let the buffer queue run meanwhile.
+ */
+static int ax_vin_edid(struct file *file, struct v4l2_edid *edid, bool set)
+{
+	struct ax_vin *vin = video_drvdata(file);
+	struct v4l2_subdev *source = vin->source;
+	int ret;
+
+	if (!source)
+		return -ENOTTY;
+	if (edid->pad)
+		return -EINVAL;
+
+	mutex_unlock(&vin->lock);
+	if (set)
+		ret = v4l2_subdev_call(source, pad, set_edid, edid);
+	else
+		ret = v4l2_subdev_call(source, pad, get_edid, edid);
+	mutex_lock(&vin->lock);
+
+	return ret;
+}
+
+static int ax_vin_g_edid(struct file *file, void *priv, struct v4l2_edid *edid)
+{
+	return ax_vin_edid(file, edid, false);
+}
+
+static int ax_vin_s_edid(struct file *file, void *priv, struct v4l2_edid *edid)
+{
+	return ax_vin_edid(file, edid, true);
+}
+
 static int ax_vin_subscribe_event(struct v4l2_fh *fh,
 				  const struct v4l2_event_subscription *sub)
 {
@@ -1020,6 +1057,8 @@ static const struct v4l2_ioctl_ops ax_vin_ioctl_ops = {
 	.vidioc_s_dv_timings		= ax_vin_s_dv_timings,
 	.vidioc_enum_dv_timings		= ax_vin_enum_dv_timings,
 	.vidioc_dv_timings_cap		= ax_vin_dv_timings_cap,
+	.vidioc_g_edid			= ax_vin_g_edid,
+	.vidioc_s_edid			= ax_vin_s_edid,
 
 	.vidioc_reqbufs			= vb2_ioctl_reqbufs,
 	.vidioc_create_bufs		= vb2_ioctl_create_bufs,
@@ -1063,6 +1102,12 @@ static int ax_vin_notify_bound(struct v4l2_async_notifier *notifier,
 	struct v4l2_subdev_format fmt = {
 		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
 	};
+	int ret;
+
+	ret = v4l2_ctrl_add_handler(&vin->ctrl_handler, sd->ctrl_handler, NULL,
+				    true);
+	if (ret)
+		return ret;
 
 	vin->source = sd;
 	if (!vb2_is_busy(&vin->queue) &&
@@ -1083,7 +1128,12 @@ static void ax_vin_notify_unbind(struct v4l2_async_notifier *notifier,
 {
 	struct ax_vin *vin = container_of(notifier, struct ax_vin, notifier);
 
+	mutex_lock(&vin->lock);
 	vin->source = NULL;
+	/* Drop the references to the controls the source is about to free. */
+	v4l2_ctrl_handler_free(&vin->ctrl_handler);
+	v4l2_ctrl_handler_init(&vin->ctrl_handler, 3);
+	mutex_unlock(&vin->lock);
 }
 
 static const struct v4l2_async_notifier_operations ax_vin_notify_ops = {
@@ -1190,6 +1240,7 @@ static int ax_vin_probe(struct platform_device *pdev)
 	ret = v4l2_device_register(dev, &vin->v4l2_dev);
 	if (ret)
 		return ret;
+	v4l2_ctrl_handler_init(&vin->ctrl_handler, 3);
 
 	q = &vin->queue;
 	q->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -1215,6 +1266,7 @@ static int ax_vin_probe(struct platform_device *pdev)
 	vdev->release = video_device_release_empty;
 	vdev->lock = &vin->lock;
 	vdev->queue = q;
+	vdev->ctrl_handler = &vin->ctrl_handler;
 	vdev->vfl_dir = VFL_DIR_RX;
 	vdev->device_caps = V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_STREAMING;
 	video_set_drvdata(vdev, vin);
@@ -1236,6 +1288,7 @@ static int ax_vin_probe(struct platform_device *pdev)
 err_vdev:
 	vb2_video_unregister_device(vdev);
 err_v4l2:
+	v4l2_ctrl_handler_free(&vin->ctrl_handler);
 	v4l2_device_unregister(&vin->v4l2_dev);
 	return ret;
 }
@@ -1247,6 +1300,7 @@ static void ax_vin_remove(struct platform_device *pdev)
 	v4l2_async_nf_unregister(&vin->notifier);
 	v4l2_async_nf_cleanup(&vin->notifier);
 	vb2_video_unregister_device(&vin->vdev);
+	v4l2_ctrl_handler_free(&vin->ctrl_handler);
 	v4l2_device_unregister(&vin->v4l2_dev);
 	mutex_destroy(&vin->lock);
 }
