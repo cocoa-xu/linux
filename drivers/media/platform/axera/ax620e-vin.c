@@ -41,6 +41,13 @@
 #define GLB_CLK_SEL_SET			0x0c8
 #define GLB_CLK_SEL_CLR			0x0cc
 #define GLB_CLK_SEL_CSIRX_CFG		GENMASK(1, 0)
+/*
+ * ISP core and bus clock sources as the vendor ISP driver programs them. The
+ * reset value selects 24 MHz: the pipeline then runs at a few frames per
+ * second and drops most of each frame.
+ */
+#define GLB_CLK_SEL_ISP			GENMASK(12, 2)
+#define GLB_CLK_SEL_ISP_RUN		0x5ac
 #define GLB_EB0_SET			0x0d0
 #define GLB_EB0_CLR			0x0d4
 #define GLB_EB0_CFG_PHY			BIT(0)
@@ -253,6 +260,8 @@ static void ax_vin_isp_reset(struct ax_vin *vin)
 	void __iomem *glb = vin->glb, *isp = vin->isp;
 	unsigned int i;
 
+	ax_vin_field(glb, GLB_CLK_SEL_SET, GLB_CLK_SEL_CLR, GLB_CLK_SEL_ISP,
+		     GLB_CLK_SEL_ISP_RUN);
 	writel(GLB_EB0_ALL, glb + GLB_EB0_SET);
 	writel(GLB_EB1_ALL, glb + GLB_EB1_SET);
 	writel(GLB_RST0_ALL, glb + GLB_RST0_DEASSERT);
