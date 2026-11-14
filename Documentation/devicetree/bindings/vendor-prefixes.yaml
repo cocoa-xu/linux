@@ -223,6 +223,8 @@ patternProperties:
     description: Axentia Technologies AB
   "^axiado,.*":
     description: Axiado Corporation
+  "^axera,.*":
+    description: Axera Semiconductor Co., Ltd.
   "^axis,.*":
     description: Axis Communications AB
   "^ayaneo,.*":
