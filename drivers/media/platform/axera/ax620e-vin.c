@@ -66,6 +66,7 @@
 #define GLB_RST0_DEASSERT		0x0e4
 #define GLB_RST0_CSIRX			(BIT(2) | BIT(3) | BIT(4) | BIT(5) | \
 					 BIT(10) | BIT(11))
+#define GLB_RST0_DESKEW			(BIT(10) | BIT(11))
 #define GLB_RST0_DPHYRX			BIT(12)
 #define GLB_RST0_ALL			GENMASK(31, 0)
 /* The vendor driver never pulses bit 27. */
@@ -123,10 +124,15 @@
 #define ISP_IRQ_EOF_GROUP		5
 #define ISP_IRQ_EOF			BIT(9)
 #define ISP_IRQ_MASK			0x150
+/*
+ * Pipeline blocks a frame goes through, latched at its start; the vendor's
+ * last command list before a stop clears it.
+ */
+#define ISP_FRAME_EN			0x178
 /* AXI port of the IFE (write DMA): writing all ones stops it. */
 #define ISP_AXI_CTRL			0x184
 #define ISP_AXI_STOP			GENMASK(31, 0)
-/* Nonzero while writes are pending. */
+/* Status after each AXI control register: nonzero while writes are pending. */
 #define ISP_AXI_STATUS			0x188
 #define ISP_START			0x1b8
 /* Processing blocks, unused in bypass: only reset and interrupt masks. */
@@ -165,6 +171,8 @@
 #define AX_VIN_MAX_WIDTH		3840
 #define AX_VIN_MAX_HEIGHT		2160
 #define AX_VIN_STRIDE_ALIGN		64
+/* After the IFE stop, as long as the slowest frame. */
+#define AX_VIN_STOP_SETTLE_MS		50
 
 struct ax_vin_reg {
 	u32 offset;
@@ -189,7 +197,7 @@ static const struct ax_vin_reg ax_vin_ife_cfg[] = {
 static const struct ax_vin_reg ax_vin_frame_cfg[] = {
 	{ 0x154, 0x00000000 }, { 0x158, 0x00008007 }, { 0x200, 0x00000000 },
 	{ 0x170, 0x00000030 }, { 0x174, 0x00000000 }, { 0x1a4, 0x57fffbbf },
-	{ 0x178, 0x0000000c },
+	{ ISP_FRAME_EN, 0x0000000c },
 	{ WDMA + 0x2fc, 0x00000004 }, { WDMA + 0x2f8, 0x00000000 },
 	{ WDMA + 0x0d8, 0x000f951f }, { WDMA + 0x6e0, 0xffffffff },
 	{ WDMA + 0x638, 0x0003fe00 }, { WDMA + 0x528, 0x00000001 },
@@ -265,6 +273,18 @@ static void ax_vin_field(void __iomem *base, u32 set, u32 clr, u32 mask,
 	writel(value, base + set);
 }
 
+static void ax_vin_pulse_resets(void __iomem *glb, unsigned int assert,
+				unsigned int deassert, unsigned long mask)
+{
+	unsigned int bit;
+
+	/* One at a time, in the vendor driver's order. */
+	for_each_set_bit(bit, &mask, BITS_PER_LONG) {
+		writel(BIT(bit), glb + assert);
+		writel(BIT(bit), glb + deassert);
+	}
+}
+
 static void ax_vin_isp_reset(struct ax_vin *vin)
 {
 	static const u32 axi_ctrl[] = {
@@ -272,6 +292,7 @@ static void ax_vin_isp_reset(struct ax_vin *vin)
 	};
 	void __iomem *glb = vin->glb, *isp = vin->isp;
 	unsigned int i;
+	u32 status;
 
 	ax_vin_field(glb, GLB_CLK_SEL_SET, GLB_CLK_SEL_CLR, GLB_CLK_SEL_ISP,
 		     GLB_CLK_SEL_ISP_RUN);
@@ -282,10 +303,15 @@ static void ax_vin_isp_reset(struct ax_vin *vin)
 
 	for (i = 0; i < ARRAY_SIZE(axi_ctrl); i++)
 		writel(ISP_AXI_STOP, isp + axi_ctrl[i]);
-	writel(GLB_RST0_PULSE, glb + GLB_RST0_ASSERT);
-	writel(GLB_RST0_PULSE, glb + GLB_RST0_DEASSERT);
-	writel(GLB_RST1_ALL, glb + GLB_RST1_ASSERT);
-	writel(GLB_RST1_ALL, glb + GLB_RST1_DEASSERT);
+	for (i = 0; i < ARRAY_SIZE(axi_ctrl); i++)
+		if (readl_poll_timeout(isp + axi_ctrl[i] + 4, status, !status,
+				       200, 10 * USEC_PER_MSEC))
+			dev_warn(vin->dev, "AXI port %#x still busy (%#x)\n",
+				 axi_ctrl[i], status);
+	ax_vin_pulse_resets(glb, GLB_RST0_ASSERT, GLB_RST0_DEASSERT,
+			    GLB_RST0_PULSE);
+	ax_vin_pulse_resets(glb, GLB_RST1_ASSERT, GLB_RST1_DEASSERT,
+			    GLB_RST1_ALL);
 	for (i = 0; i < ARRAY_SIZE(axi_ctrl); i++)
 		writel(0, isp + axi_ctrl[i]);
 
@@ -367,10 +393,8 @@ static void ax_vin_mipi_start(struct ax_vin *vin)
 	msleep(25);
 	writel(GLB_RST0_DPHYRX, glb + GLB_RST0_DEASSERT);
 	/*
-	 * Keep lane deskew in reset, as the vendor driver does below 1.5 Gb/s.
-	 * The LT7911EXC sends no deskew sequence: running, deskew re-aligns
-	 * the lanes on video data, and after a line cut short by an input
-	 * change every later frame comes out shifted until the SoC is reset.
+	 * Keep lane deskew in reset, as the vendor driver does below 1.5 Gb/s:
+	 * the LT7911EXC sends no deskew sequence.
 	 */
 	writel(DPHY_DESKEW_RST, dphy + DPHY_DESKEW_RST_SET);
 	writel(DPHY_LANE_EN_ALL, dphy + DPHY_LANE_EN_SET);
@@ -414,9 +438,15 @@ static void ax_vin_ife_start(struct ax_vin *vin)
 	writel(1, isp + IFE_UPDATE1);
 }
 
+/*
+ * The vendor driver's stop: the IFE drops the frame it is in, then the MIPI
+ * receiver and the clocks go off, with no reset. Resetting the ISP while the
+ * source had cut a frame short left every later frame shifted until the SoC
+ * was reset; the next start resets it behind a stopped AXI port instead.
+ */
 static void ax_vin_hw_stop(struct ax_vin *vin)
 {
-	void __iomem *isp = vin->isp, *glb = vin->glb;
+	void __iomem *isp = vin->isp, *glb = vin->glb, *dphy = vin->dphy;
 	/* The ISP only answers while clocked: at probe after a cold boot not. */
 	bool clocked = (readl(glb + GLB_EB0) & GLB_EB0_ISP) == GLB_EB0_ISP;
 	u32 status;
@@ -424,35 +454,39 @@ static void ax_vin_hw_stop(struct ax_vin *vin)
 	writel(0, isp + ISP_IRQ_EN(ISP_IRQ_SOF_GROUP));
 	writel(0, isp + ISP_IRQ_EN(ISP_IRQ_EOF_GROUP));
 	if (clocked) {
-		/*
-		 * Close the IFE input and drop the frame it is in, like the
-		 * fast stop of the vendor driver. A frame the source cut short
-		 * otherwise stays half-received in the IFE, and after the
-		 * resets every later frame comes out shifted until the SoC is
-		 * reset.
-		 */
-		writel(0, isp + IFE_IN_EN);
+		/* The update makes the stop take effect now, mid-frame too. */
 		writel(IFE_CTRL_STOP(0), isp + IFE_CTRL);
-	}
-	writel(CSI_STREAM_STOP, vin->csi + CSI_STREAM_CTRL);
-	/* Let the write DMA drain what it already received. */
-	usleep_range(1000, 2000);
-	/* Then stop its AXI port and wait for the writes in flight. */
-	if (clocked) {
+		writel(1, isp + IFE_UPDATE0);
+		writel(1, isp + IFE_UPDATE1);
+		msleep(AX_VIN_STOP_SETTLE_MS);
+		writel(0, isp + ISP_FRAME_EN);
+		/*
+		 * Keep the write DMA off the buffers, which are freed next:
+		 * the AXI port stays stopped until the next start.
+		 */
 		writel(ISP_AXI_STOP, isp + ISP_AXI_CTRL);
 		if (readl_poll_timeout(isp + ISP_AXI_STATUS, status, !status,
 				       200, 10 * USEC_PER_MSEC))
 			dev_warn(vin->dev, "AXI writes still pending (%#x)\n",
 				 status);
 	}
+
+	writel(GLB_RST0_DPHYRX, glb + GLB_RST0_ASSERT);
+	writel(GLB_EB0_DPHY_RX_REF | GLB_EB0_CFG_PHY, glb + GLB_EB0_CLR);
+	if (clocked) {
+		writel(DPHY_LANE_EN_ALL, dphy + DPHY_LANE_EN_CLR);
+		writel(DPHY_DESKEW_RST, dphy + DPHY_DESKEW_RST_SET);
+	}
+	ax_vin_dphy_power(vin, false);
+	writel(GLB_RST0_DESKEW, glb + GLB_RST0_ASSERT);
 	/*
 	 * Unlike the vendor driver, leave the D-PHY TLB clock on: the D-PHY
 	 * registers only respond with it, and the next start pulses the
 	 * D-PHY resets before it would turn the clock back on.
 	 */
-	ax_vin_dphy_power(vin, false);
-	writel(GLB_RST0_ALL, glb + GLB_RST0_ASSERT);
-	writel(GLB_RST1_ALL, glb + GLB_RST1_ASSERT);
+	writel(0, vin->csi + CSI_STREAM_CTRL);
+	writel(CSI_STREAM_STOP, vin->csi + CSI_STREAM_CTRL);
+	writel(GLB_EB1_SYS_PIXEL | GLB_EB1_CSIRX_PCLK, glb + GLB_EB1_CLR);
 	writel(GLB_EB0_ALL, glb + GLB_EB0_CLR);
 	writel(GLB_EB1_ALL, glb + GLB_EB1_CLR);
 }
