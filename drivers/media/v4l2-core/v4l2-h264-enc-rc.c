@@ -5,6 +5,7 @@
  * Copyright (C) 2025-2026 Paul Kocialkowski <paulk@sys-base.io>
  */
 
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <media/v4l2-h264-enc.h>
 
@@ -58,8 +59,8 @@ int v4l2_h264_enc_rc_stats_collect(struct v4l2_h264_enc_rc *rc,
 
 	stats->index = (index + 1) % V4L2_H264_ENC_RC_STATS_SIZE_COUNT;
 
-	bitrate = 8 * stats->size_total * timeperframe->denominator /
-		  stats->count / timeperframe->numerator;
+	bitrate = div_u64(div_u64(8 * stats->size_total * timeperframe->denominator,
+				  stats->count), timeperframe->numerator);
 
 	size_error = (long)bytesused - (long)rc->size;
 	size_drift = 100 * size_error / (long)rc->size;
@@ -171,12 +172,14 @@ static int cbr_measure(struct v4l2_h264_enc_rc *rc, unsigned long *size)
 	pr_debug("+ v4l2-h264-enc-rc: cbr measure");
 
 	/* Nominal average size target for exact bitrate. */
-	target_nominal = state->bitrate * timeperframe->numerator /
-			 timeperframe->denominator / 8;
+	target_nominal = div_u64(mul_u32_u32(state->bitrate,
+					     timeperframe->numerator),
+				 timeperframe->denominator) / 8;
 
 	/* Total size budget for twice the size window. */
-	budget = 2 * V4L2_H264_ENC_RC_STATS_SIZE_COUNT * state->bitrate *
-		 timeperframe->numerator / timeperframe->denominator / 8;
+	budget = div_u64(mul_u32_u32(2 * V4L2_H264_ENC_RC_STATS_SIZE_COUNT *
+				     timeperframe->numerator, state->bitrate),
+			 timeperframe->denominator) >> 3;
 
 	if (budget < stats->size_total) {
 		target = target_nominal;
@@ -186,7 +189,8 @@ static int cbr_measure(struct v4l2_h264_enc_rc *rc, unsigned long *size)
 	/* Remaining size budget after deducing total size in window. */
 	budget -= stats->size_total;
 	/* Average size target from remaining size budget. */
-	target = budget / (2 * V4L2_H264_ENC_RC_STATS_SIZE_COUNT - stats->count);
+	target = div_u64(budget,
+			 2 * V4L2_H264_ENC_RC_STATS_SIZE_COUNT - stats->count);
 
 complete:
 	pr_debug("  nominal target: %lu bytes", target_nominal);
@@ -202,7 +206,7 @@ complete:
 		target = target * 80 / 100;
 
 	/* Reduce target size on bitrate overshoot to calm things down. */
-	if (9 * stats->size_total > 10 * stats->count * target_nominal) {
+	if (9 * stats->size_total > 10ULL * stats->count * target_nominal) {
 		pr_debug("  overshoot, reducing target size");
 		target = 80 * target / 100;
 	}
