@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Axera AX620E clock and reset controllers (VPU_SYS, PERIPH_SYS)
+ * Axera AX620E clock and reset controllers (FLASH_SYS, VPU_SYS, PERIPH_SYS)
  *
  * Each subsystem has a "GLB" register block. Every state register R has a
- * SET and a CLR alias at set_base + 2 * R and set_base + 2 * R + 4: writing
- * a 1 there sets or clears that bit, so gates, resets and mux fields can be
- * changed without a read-modify-write.
+ * SET and a CLR alias: writing a 1 there sets or clears that bit, so gates,
+ * resets and mux fields can be changed without a read-modify-write. VPU_SYS
+ * and PERIPH_SYS place them at set_base + 2 * R and set_base + 2 * R + 4,
+ * FLASH_SYS at 0x4000 + R and 0x8000 + R.
  */
 
 #include <linux/clk-provider.h>
@@ -17,8 +18,10 @@
 #include <linux/property.h>
 #include <linux/reset-controller.h>
 
+#include <dt-bindings/clock/axera,ax620e-flash-sys.h>
 #include <dt-bindings/clock/axera,ax620e-periph-sys.h>
 #include <dt-bindings/clock/axera,ax620e-vpu-sys.h>
+#include <dt-bindings/reset/axera,ax620e-flash-sys.h>
 #include <dt-bindings/reset/axera,ax620e-periph-sys.h>
 #include <dt-bindings/reset/axera,ax620e-vpu-sys.h>
 
@@ -27,11 +30,23 @@
 struct ax620e_glb_mux {
 	unsigned int id;
 	const char *name;
+	/* NULL for a source that is not known. */
 	const char * const *parents;
 	u8 num_parents;
 	u16 reg;
 	u8 shift;
 	u8 width;
+};
+
+/* Divides by field + 1; a new value takes effect on a pulse of update_bit. */
+struct ax620e_glb_div {
+	unsigned int id;
+	const char *name;
+	unsigned int parent;
+	u16 reg;
+	u8 shift;
+	u8 width;
+	u8 update_bit;
 };
 
 struct ax620e_glb_gate {
@@ -51,8 +66,12 @@ struct ax620e_glb_reset {
 
 struct ax620e_glb_data {
 	u16 set_base;
+	u8 set_stride;
+	u16 clr_offset;
 	const struct ax620e_glb_mux *muxes;
 	unsigned int num_muxes;
+	const struct ax620e_glb_div *divs;
+	unsigned int num_divs;
 	const struct ax620e_glb_gate *gates;
 	unsigned int num_gates;
 	const struct ax620e_glb_reset *resets;
@@ -71,17 +90,19 @@ struct ax620e_glb_clk {
 	struct ax620e_glb *glb;
 	u16 reg;
 	u8 shift;
+	u8 width;
 	u32 mask;
+	u8 update_bit;
 };
 
 static void __iomem *ax620e_glb_set(struct ax620e_glb *glb, u16 reg)
 {
-	return glb->base + glb->data->set_base + 2 * reg;
+	return glb->base + glb->data->set_base + glb->data->set_stride * reg;
 }
 
 static void __iomem *ax620e_glb_clr(struct ax620e_glb *glb, u16 reg)
 {
-	return ax620e_glb_set(glb, reg) + 4;
+	return ax620e_glb_set(glb, reg) + glb->data->clr_offset;
 }
 
 static struct ax620e_glb_clk *to_ax620e_glb_clk(struct clk_hw *hw)
@@ -141,6 +162,48 @@ static const struct clk_ops ax620e_glb_mux_ops = {
 	.determine_rate = __clk_mux_determine_rate,
 };
 
+static unsigned long ax620e_glb_div_recalc_rate(struct clk_hw *hw,
+						unsigned long parent_rate)
+{
+	struct ax620e_glb_clk *clk = to_ax620e_glb_clk(hw);
+	u32 val = (readl(clk->glb->base + clk->reg) & clk->mask) >> clk->shift;
+
+	return divider_recalc_rate(hw, parent_rate, val, NULL, 0, clk->width);
+}
+
+static int ax620e_glb_div_determine_rate(struct clk_hw *hw,
+					 struct clk_rate_request *req)
+{
+	struct ax620e_glb_clk *clk = to_ax620e_glb_clk(hw);
+
+	return divider_determine_rate(hw, req, NULL, clk->width, 0);
+}
+
+static int ax620e_glb_div_set_rate(struct clk_hw *hw, unsigned long rate,
+				   unsigned long parent_rate)
+{
+	struct ax620e_glb_clk *clk = to_ax620e_glb_clk(hw);
+	int val;
+
+	val = divider_get_val(rate, parent_rate, NULL, clk->width, 0);
+	if (val < 0)
+		return val;
+
+	writel(clk->mask, ax620e_glb_clr(clk->glb, clk->reg));
+	writel(val << clk->shift, ax620e_glb_set(clk->glb, clk->reg));
+	writel(BIT(clk->update_bit), ax620e_glb_set(clk->glb, clk->reg));
+	udelay(2);
+	writel(BIT(clk->update_bit), ax620e_glb_clr(clk->glb, clk->reg));
+
+	return 0;
+}
+
+static const struct clk_ops ax620e_glb_div_ops = {
+	.recalc_rate = ax620e_glb_div_recalc_rate,
+	.determine_rate = ax620e_glb_div_determine_rate,
+	.set_rate = ax620e_glb_div_set_rate,
+};
+
 static struct ax620e_glb *to_ax620e_glb(struct reset_controller_dev *rcdev)
 {
 	return container_of(rcdev, struct ax620e_glb, rcdev);
@@ -193,20 +256,15 @@ static const struct reset_control_ops ax620e_glb_reset_ops = {
 };
 
 static struct clk_hw *ax620e_glb_register(struct device *dev,
-					  struct ax620e_glb *glb,
-					  struct clk_init_data *init,
-					  u16 reg, u8 shift, u32 mask)
+					  const struct ax620e_glb_clk *tmpl,
+					  struct clk_init_data *init)
 {
 	struct ax620e_glb_clk *clk;
 	int ret;
 
-	clk = devm_kzalloc(dev, sizeof(*clk), GFP_KERNEL);
+	clk = devm_kmemdup(dev, tmpl, sizeof(*clk), GFP_KERNEL);
 	if (!clk)
 		return ERR_PTR(-ENOMEM);
-	clk->glb = glb;
-	clk->reg = reg;
-	clk->shift = shift;
-	clk->mask = mask;
 	clk->hw.init = init;
 
 	ret = devm_clk_hw_register(dev, &clk->hw);
@@ -244,6 +302,13 @@ static int ax620e_glb_probe(struct platform_device *pdev)
 
 	for (i = 0; i < data->num_muxes; i++) {
 		const struct ax620e_glb_mux *mux = &data->muxes[i];
+		struct ax620e_glb_clk tmpl = {
+			.glb = glb,
+			.reg = mux->reg,
+			.shift = mux->shift,
+			.width = mux->width,
+			.mask = GENMASK(mux->shift + mux->width - 1, mux->shift),
+		};
 		struct clk_parent_data *parents;
 		struct clk_init_data init = { };
 
@@ -251,24 +316,54 @@ static int ax620e_glb_probe(struct platform_device *pdev)
 				       GFP_KERNEL);
 		if (!parents)
 			return -ENOMEM;
-		for (j = 0; j < mux->num_parents; j++)
-			parents[j].fw_name = mux->parents[j];
+		for (j = 0; j < mux->num_parents; j++) {
+			if (mux->parents[j])
+				parents[j].fw_name = mux->parents[j];
+			else
+				parents[j].index = -1;
+		}
 
 		init.name = mux->name;
 		init.ops = &ax620e_glb_mux_ops;
 		init.parent_data = parents;
 		init.num_parents = mux->num_parents;
 		init.flags = CLK_SET_RATE_NO_REPARENT;
-		hw = ax620e_glb_register(dev, glb, &init, mux->reg, mux->shift,
-					 GENMASK(mux->shift + mux->width - 1,
-						 mux->shift));
+		hw = ax620e_glb_register(dev, &tmpl, &init);
 		if (IS_ERR(hw))
 			return PTR_ERR(hw);
 		clk_data->hws[mux->id] = hw;
 	}
 
+	for (i = 0; i < data->num_divs; i++) {
+		const struct ax620e_glb_div *div = &data->divs[i];
+		struct ax620e_glb_clk tmpl = {
+			.glb = glb,
+			.reg = div->reg,
+			.shift = div->shift,
+			.width = div->width,
+			.mask = GENMASK(div->shift + div->width - 1, div->shift),
+			.update_bit = div->update_bit,
+		};
+		struct clk_parent_data parent = { .hw = clk_data->hws[div->parent] };
+		struct clk_init_data init = { };
+
+		init.name = div->name;
+		init.ops = &ax620e_glb_div_ops;
+		init.parent_data = &parent;
+		init.num_parents = 1;
+		hw = ax620e_glb_register(dev, &tmpl, &init);
+		if (IS_ERR(hw))
+			return PTR_ERR(hw);
+		clk_data->hws[div->id] = hw;
+	}
+
 	for (i = 0; i < data->num_gates; i++) {
 		const struct ax620e_glb_gate *gate = &data->gates[i];
+		struct ax620e_glb_clk tmpl = {
+			.glb = glb,
+			.reg = gate->reg,
+			.mask = BIT(gate->bit),
+		};
 		struct clk_parent_data parent = { };
 		struct clk_init_data init = { };
 
@@ -282,8 +377,7 @@ static int ax620e_glb_probe(struct platform_device *pdev)
 		init.parent_data = &parent;
 		init.num_parents = 1;
 		init.flags = CLK_SET_RATE_PARENT;
-		hw = ax620e_glb_register(dev, glb, &init, gate->reg, 0,
-					 BIT(gate->bit));
+		hw = ax620e_glb_register(dev, &tmpl, &init);
 		if (IS_ERR(hw))
 			return PTR_ERR(hw);
 		clk_data->hws[gate->id] = hw;
@@ -326,6 +420,8 @@ static const struct ax620e_glb_reset vpu_resets[] = {
 
 static const struct ax620e_glb_data ax620e_vpu_sys_data = {
 	.set_base = 0x104,
+	.set_stride = 2,
+	.clr_offset = 4,
 	.muxes = vpu_muxes,
 	.num_muxes = ARRAY_SIZE(vpu_muxes),
 	.gates = vpu_gates,
@@ -400,6 +496,8 @@ static const struct ax620e_glb_reset periph_resets[] = {
 
 static const struct ax620e_glb_data ax620e_periph_sys_data = {
 	.set_base = 0xa8,
+	.set_stride = 2,
+	.clr_offset = 4,
 	.muxes = periph_muxes,
 	.num_muxes = ARRAY_SIZE(periph_muxes),
 	.gates = periph_gates,
@@ -409,7 +507,67 @@ static const struct ax620e_glb_data ax620e_periph_sys_data = {
 	.num_clks = AX620E_PERIPH_PCLK_WDT2 + 1,
 };
 
+static const char * const flash_bus_parents[] = {
+	"cpll_24m", "epll_100m", "cpll_156m", "cpll_208m", "epll_250m",
+	"cpll_312m",
+};
+
+/* Only the 400 MHz NPLL output of the card clock sources is known. */
+static const char * const flash_card_parents[] = {
+	NULL, NULL, NULL, "npll_400m",
+};
+
+static const struct ax620e_glb_mux flash_muxes[] = {
+	{ AX620E_FLASH_CLK_BUS_SEL, "flash_bus_sel", flash_bus_parents, 6, 0x0, 6, 3 },
+	{ AX620E_FLASH_CLK_SD_CARD_SEL, "flash_sd_card_sel", flash_card_parents, 4, 0x0, 16, 2 },
+	{ AX620E_FLASH_CLK_SDIO_CARD_SEL, "flash_sdio_card_sel", flash_card_parents, 4, 0x0, 18, 2 },
+};
+
+static const struct ax620e_glb_div flash_divs[] = {
+	{ AX620E_FLASH_CLK_SD_CARD_DIV, "flash_sd_card_div", AX620E_FLASH_CLK_SD_CARD_SEL, 0xc, 20, 6, 26 },
+	{ AX620E_FLASH_CLK_SDIO_CARD_DIV, "flash_sdio_card_div", AX620E_FLASH_CLK_SDIO_CARD_SEL, 0x10, 0, 6, 6 },
+};
+
+static const struct ax620e_glb_gate flash_gates[] = {
+	{ AX620E_FLASH_CLK_SD_CARD, "flash_sd_card", AX620E_FLASH_CLK_SD_CARD_DIV, NULL, 0x4, 9 },
+	{ AX620E_FLASH_CLK_SDIO_CARD, "flash_sdio_card", AX620E_FLASH_CLK_SDIO_CARD_DIV, NULL, 0x4, 10 },
+	{ AX620E_FLASH_CLK_USB2_REF, "flash_usb2_ref", AX_GLB_NO_PARENT, "cpll_24m", 0x4, 12 },
+	{ AX620E_FLASH_CLK_USB2_REF_ALT, "flash_usb2_ref_alt", AX_GLB_NO_PARENT, "cpll_24m", 0x4, 14 },
+	{ AX620E_FLASH_ACLK_SD, "flash_aclk_sd", AX620E_FLASH_CLK_BUS_SEL, NULL, 0x8, 3 },
+	{ AX620E_FLASH_ACLK_SDIO, "flash_aclk_sdio", AX620E_FLASH_CLK_BUS_SEL, NULL, 0x8, 4 },
+	{ AX620E_FLASH_CLK_USB2_BUS, "flash_usb2_bus", AX620E_FLASH_CLK_BUS_SEL, NULL, 0x8, 5 },
+	{ AX620E_FLASH_PCLK_SD, "flash_pclk_sd", AX_GLB_NO_PARENT, "pclk_top", 0x8, 17 },
+	{ AX620E_FLASH_PCLK_SDIO, "flash_pclk_sdio", AX_GLB_NO_PARENT, "pclk_top", 0x8, 18 },
+};
+
+static const struct ax620e_glb_reset flash_resets[] = {
+	[AX620E_FLASH_RST_SD_CARD] = { 0x14, BIT(15) },
+	[AX620E_FLASH_RST_SD_AXI] = { 0x14, BIT(16) },
+	[AX620E_FLASH_RST_SD_APB] = { 0x14, BIT(17) },
+	[AX620E_FLASH_RST_SDIO_CARD] = { 0x14, BIT(18) },
+	[AX620E_FLASH_RST_SDIO_AXI] = { 0x14, BIT(19) },
+	[AX620E_FLASH_RST_SDIO_APB] = { 0x14, BIT(20) },
+	[AX620E_FLASH_RST_USB2_PHY] = { 0x14, BIT(24) },
+	[AX620E_FLASH_RST_USB2_VCC] = { 0x14, BIT(25) },
+};
+
+static const struct ax620e_glb_data ax620e_flash_sys_data = {
+	.set_base = 0x4000,
+	.set_stride = 1,
+	.clr_offset = 0x4000,
+	.muxes = flash_muxes,
+	.num_muxes = ARRAY_SIZE(flash_muxes),
+	.divs = flash_divs,
+	.num_divs = ARRAY_SIZE(flash_divs),
+	.gates = flash_gates,
+	.num_gates = ARRAY_SIZE(flash_gates),
+	.resets = flash_resets,
+	.num_resets = ARRAY_SIZE(flash_resets),
+	.num_clks = AX620E_FLASH_PCLK_SDIO + 1,
+};
+
 static const struct of_device_id ax620e_glb_of_match[] = {
+	{ .compatible = "axera,ax620e-flash-sys", .data = &ax620e_flash_sys_data },
 	{ .compatible = "axera,ax620e-periph-sys", .data = &ax620e_periph_sys_data },
 	{ .compatible = "axera,ax620e-vpu-sys", .data = &ax620e_vpu_sys_data },
 	{ }

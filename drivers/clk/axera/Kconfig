@@ -7,6 +7,7 @@ config CLK_AX620E_GLB
 	default ARCH_AXERA
 	select RESET_CONTROLLER
 	help
-	  Clock gates, source muxes and resets of the Axera AX620E
-	  subsystem blocks: the video codecs (VPU_SYS) and the low-speed
-	  peripherals such as GPIO and I2C (PERIPH_SYS).
+	  Clock gates, source muxes, dividers and resets of the Axera
+	  AX620E subsystem blocks: USB and SD/SDIO (FLASH_SYS), the video
+	  codecs (VPU_SYS) and the low-speed peripherals such as GPIO and
+	  I2C (PERIPH_SYS).
