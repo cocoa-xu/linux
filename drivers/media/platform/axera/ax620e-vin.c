@@ -24,6 +24,7 @@
 #include <linux/spinlock.h>
 #include <linux/wait.h>
 
+#include <media/mipi-csi2.h>
 #include <media/v4l2-async.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
@@ -134,9 +135,11 @@
 #define IFE_UPDATE0			(IFE + 0x100)
 #define IFE_UPDATE1			(IFE + 0x104)
 #define IFE_IN_SIZE			(IFE + 0x118)
-#define IFE_STRIDE0			(IFE + 0x140)
-#define IFE_STRIDE1			(IFE + 0x144)
-#define IFE_STRIDE2			(IFE + 0x14c)
+/* CSI-2 data type of the lines the IFE takes: it drops all others. */
+#define IFE_IN_DT0			(IFE + 0x140)
+#define IFE_IN_DT1			(IFE + 0x144)
+#define IFE_IN_DT2			(IFE + 0x14c)
+#define IFE_IN_DT			GENMASK(13, 8)
 
 /* IFE write DMA */
 #define WDMA				0x14000
@@ -165,7 +168,7 @@ static const struct ax_vin_reg ax_vin_csi_cfg[] = {
 	{ 0x10c, 0x00000301 }, { 0x110, 0x00000010 }, { 0x118, 0x00000d1f },
 };
 
-/* IFE input settings besides size and stride. */
+/* IFE input settings besides size and data type. */
 static const struct ax_vin_reg ax_vin_ife_cfg[] = {
 	{ IFE + 0x110, 0x00000040 }, { IFE_IN_EN, 0x00000001 },
 	{ IFE + 0x114, 0x00000000 }, { IFE + 0x124, 0x00000000 },
@@ -368,6 +371,7 @@ static void ax_vin_mipi_start(struct ax_vin *vin)
 static void ax_vin_ife_start(struct ax_vin *vin)
 {
 	const struct v4l2_pix_format *fmt = &vin->fmt;
+	u32 dt = FIELD_PREP(IFE_IN_DT, MIPI_CSI2_DT_YUV422_8B);
 	void __iomem *isp = vin->isp;
 
 	writel(0xffff7ffb, isp + ISP_IRQ_MASK);
@@ -375,9 +379,9 @@ static void ax_vin_ife_start(struct ax_vin *vin)
 	writel(0, isp + IFE_UPDATE1);
 	ax_vin_write_regs(isp, ax_vin_ife_cfg, ARRAY_SIZE(ax_vin_ife_cfg));
 	writel(fmt->height << 16 | fmt->width, isp + IFE_IN_SIZE);
-	writel(fmt->bytesperline, isp + IFE_STRIDE0);
-	writel(fmt->bytesperline, isp + IFE_STRIDE1);
-	writel(fmt->bytesperline, isp + IFE_STRIDE2);
+	writel(dt, isp + IFE_IN_DT0);
+	writel(dt, isp + IFE_IN_DT1);
+	writel(dt, isp + IFE_IN_DT2);
 	writel(1, isp + IFE_UPDATE0);
 	writel(1, isp + IFE_UPDATE1);
 
