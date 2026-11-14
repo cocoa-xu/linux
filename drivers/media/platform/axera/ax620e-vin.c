@@ -200,14 +200,9 @@ struct ax_vin_reg {
 };
 
 static const struct ax_vin_reg ax_vin_csi_cfg[] = {
-	{ 0x008, 0x43210410 }, { 0x040, 0x0000001f },
-	/*
-	 * The vendor driver also enables the interrupts of status registers
-	 * 0x018 (7) and 0x020 (0x6f) but never clears them: a bit stuck in
-	 * 0x020 while the input does not match the setup kept the line high.
-	 */
-	{ 0x01c, 0x00000000 }, { 0x024, 0x00000000 },
-	{ 0x10c, 0x00000301 }, { 0x110, 0x00000010 }, { 0x118, 0x00000d1f },
+	{ 0x008, 0x43210410 }, { 0x040, 0x0000001f }, { 0x01c, 0x00000007 },
+	{ 0x024, 0x0000006f }, { 0x10c, 0x00000301 }, { 0x110, 0x00000010 },
+	{ 0x118, 0x00000d1f },
 };
 
 /* IFE input settings besides size and data type. */
