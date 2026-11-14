@@ -44,7 +44,7 @@ static int __init ramlog_setup(struct earlycon_device *dev, const char *opt)
 	unsigned int i;
 	u32 boots;
 
-	if (!base || !PAGE_ALIGNED(base))
+	if (!base || !IS_ALIGNED(base, PAGE_SIZE))
 		return -EINVAL;
 
 	for (i = 0; i < RAMLOG_PAGES; i++)
