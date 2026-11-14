@@ -22,6 +22,7 @@
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/spinlock.h>
+#include <linux/wait.h>
 
 #include <media/v4l2-async.h>
 #include <media/v4l2-ctrls.h>
@@ -85,8 +86,8 @@
 #define DPHY_HSRX_CFG1			0x0d4
 #define DPHY_HSRX_PRE_SET		0x0d8
 #define DPHY_HSRX_PRE_CLR		0x0dc
-#define DPHY_DESKEW_CTRL		0x0ec
-#define DPHY_DESKEW_RESET		GENMASK(13, 10)
+#define DPHY_DESKEW_RST_CLR		0x0ec
+#define DPHY_DESKEW_RST			GENMASK(13, 10)
 #define DPHY_LANE_EN_SET		0x110
 #define DPHY_LANE_EN_CLR		0x114
 #define DPHY_LANE_EN_ALL		GENMASK(5, 0)
@@ -211,6 +212,14 @@ struct ax_vin {
 	u32 active_sequence;
 	u32 sequence;
 	u16 frame_id;
+	/*
+	 * Stopping: arm nothing new and stop the receiver once the DMA is
+	 * idle. After a reset in the middle of a frame, every later frame
+	 * comes out shifted by a fixed offset until the SoC is reset.
+	 */
+	bool stopping;
+	bool idle;
+	wait_queue_head_t idle_wq;
 
 	struct v4l2_pix_format fmt;
 };
@@ -293,13 +302,13 @@ static void ax_vin_mipi_start(struct ax_vin *vin)
 	unsigned int i;
 
 	writel(CSI_STREAM_STOP, csi + CSI_STREAM_CTRL);
-	writel(DPHY_DESKEW_RESET, dphy + DPHY_DESKEW_CTRL);
+	writel(DPHY_DESKEW_RST, dphy + DPHY_DESKEW_RST_CLR);
 	ax_vin_dphy_power(vin, false);
 	writel(CSI_STREAM_SOFT_RST | CSI_STREAM_STOP, csi + CSI_STREAM_CTRL);
 	writel(0x3, csi + CSI_RX_SOFT_RST);
 	writel(GLB_RST0_DPHYRX, glb + GLB_RST0_ASSERT);
 	writel(GLB_RST0_CSIRX, glb + GLB_RST0_DEASSERT);
-	writel(DPHY_DESKEW_RESET, dphy + DPHY_DESKEW_CTRL);
+	writel(DPHY_DESKEW_RST, dphy + DPHY_DESKEW_RST_CLR);
 	regmap_write(vin->comm, COMM_RST_DEASSERT, COMM_RST_DPHYRX_TLB);
 
 	writel(GLB_EB1_CSIRX_PCLK | GLB_EB1_SYS_PIXEL, glb + GLB_EB1_SET);
@@ -384,6 +393,11 @@ static void ax_vin_hw_stop(struct ax_vin *vin)
 	writel(CSI_STREAM_STOP, vin->csi + CSI_STREAM_CTRL);
 	/* Let the write DMA drain what it already received. */
 	usleep_range(1000, 2000);
+	/*
+	 * Unlike the vendor driver, leave the D-PHY TLB clock on: the D-PHY
+	 * registers only respond with it, and the next start pulses the
+	 * D-PHY resets before it would turn the clock back on.
+	 */
 	ax_vin_dphy_power(vin, false);
 	writel(GLB_RST0_ALL, glb + GLB_RST0_ASSERT);
 	writel(GLB_RST1_ALL, glb + GLB_RST1_ASSERT);
@@ -399,7 +413,7 @@ static void ax_vin_arm_next(struct ax_vin *vin)
 	struct ax_vin_buffer *buf;
 	dma_addr_t addr;
 
-	if (vin->armed || list_empty(&vin->queued))
+	if (vin->stopping || vin->armed || list_empty(&vin->queued))
 		return;
 
 	buf = list_first_entry(&vin->queued, struct ax_vin_buffer, list);
@@ -461,6 +475,13 @@ static irqreturn_t ax_vin_irq(int irq, void *data)
 			vin->armed = NULL;
 		}
 		ax_vin_arm_next(vin);
+	}
+
+	/* Right after a frame end: the receiver is in vertical blanking. */
+	if (vin->stopping && !vin->idle && !vin->active && !vin->armed) {
+		writel(CSI_STREAM_STOP, vin->csi + CSI_STREAM_CTRL);
+		vin->idle = true;
+		wake_up(&vin->idle_wq);
 	}
 
 	spin_unlock(&vin->qlock);
@@ -566,6 +587,8 @@ static int ax_vin_start_streaming(struct vb2_queue *q, unsigned int count)
 	}
 
 	vin->sequence = 0;
+	vin->stopping = false;
+	vin->idle = false;
 
 	ax_vin_isp_reset(vin);
 	ax_vin_mipi_start(vin);
@@ -596,6 +619,20 @@ static int ax_vin_start_streaming(struct vb2_queue *q, unsigned int count)
 static void ax_vin_stop_streaming(struct vb2_queue *q)
 {
 	struct ax_vin *vin = vb2_get_drv_priv(q);
+	unsigned long flags;
+
+	spin_lock_irqsave(&vin->qlock, flags);
+	vin->stopping = true;
+	if (!vin->active && !vin->armed) {
+		writel(CSI_STREAM_STOP, vin->csi + CSI_STREAM_CTRL);
+		vin->idle = true;
+	}
+	spin_unlock_irqrestore(&vin->qlock, flags);
+
+	/* At most the armed frame and the one being written. */
+	if (!wait_event_timeout(vin->idle_wq, READ_ONCE(vin->idle),
+				msecs_to_jiffies(200)))
+		dev_warn(vin->dev, "no frame end, stopping mid-frame\n");
 
 	if (vin->source)
 		v4l2_subdev_call(vin->source, video, s_stream, 0);
@@ -942,6 +979,7 @@ static int ax_vin_probe(struct platform_device *pdev)
 	vin->dev = dev;
 	mutex_init(&vin->lock);
 	spin_lock_init(&vin->qlock);
+	init_waitqueue_head(&vin->idle_wq);
 	INIT_LIST_HEAD(&vin->queued);
 
 	vin->isp = devm_platform_ioremap_resource_byname(pdev, "isp");
