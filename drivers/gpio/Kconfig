@@ -179,6 +179,15 @@ config GPIO_AMDPT
 	  Driver for GPIO functionality on Promontory IOHub.
 	  Requires ACPI ASL code to enumerate as a platform device.
 
+config GPIO_AX620E
+	tristate "Axera AX620E GPIO support"
+	depends on ARCH_AXERA || COMPILE_TEST
+	depends on OF
+	default ARCH_AXERA
+	select GPIOLIB_IRQCHIP
+	help
+	  Say Y here to support the GPIO controllers of Axera AX620E SoCs.
+
 config GPIO_ASPEED
 	tristate "Aspeed GPIO support"
 	depends on ARCH_ASPEED || COMPILE_TEST
