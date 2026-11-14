@@ -308,7 +308,7 @@ static int rwnx_send_msg(struct rwnx_hw *rwnx_hw, const void *msg_params,
 
 	//RWNX_DBG(RWNX_FN_ENTRY_STR);
     AICWFDBG(LOGTRACE, "%s (%d)%s reqcfm:%d in_irq:%d in_softirq:%d in_atomic:%d\r\n",
-    __func__, reqid, RWNX_ID2STR(reqid), reqcfm, (int)in_irq(), (int)in_softirq(), (int)in_atomic());
+    __func__, reqid, RWNX_ID2STR(reqid), reqcfm, (int)in_hardirq(), (int)in_softirq(), (int)in_atomic());
 
 
 #ifdef AICWF_USB_SUPPORT
@@ -416,7 +416,7 @@ static int rwnx_send_msg1(struct rwnx_hw *rwnx_hw, const void *msg_params,
 
 //	RWNX_DBG(RWNX_FN_ENTRY_STR);
     printk("%s (%d)%s reqcfm:%d in_irq:%d in_softirq:%d in_atomic:%d\r\n",
-    __func__, reqid, RWNX_ID2STR(reqid), reqcfm, (int)in_irq(), (int)in_softirq(), (int)in_atomic());
+    __func__, reqid, RWNX_ID2STR(reqid), reqcfm, (int)in_hardirq(), (int)in_softirq(), (int)in_atomic());
 
 	rwnx_wakeup_lock(rwnx_hw->ws_tx);
 	msg = container_of((void *)msg_params, struct lmac_msg, param);
@@ -671,9 +671,6 @@ int rwnx_send_key_add(struct rwnx_hw *rwnx_hw, u8 vif_idx, u8 sta_idx, bool pair
 	RWNX_DBG("%s: sta_idx:%d key_idx:%d inst_nbr:%d cipher:%d key_len:%d\n", __func__,
 			 key_add_req->sta_idx, key_add_req->key_idx, key_add_req->inst_nbr,
 			 key_add_req->cipher_suite, key_add_req->key.length);
-#if defined(CONFIG_RWNX_DBG) || defined(CONFIG_DYNAMIC_DEBUG)
-	print_hex_dump_bytes("key: ", DUMP_PREFIX_OFFSET, key_add_req->key.array, key_add_req->key.length);
-#endif
 
 	/* Send the MM_KEY_ADD_REQ message to LMAC FW */
 	return rwnx_send_msg(rwnx_hw, key_add_req, 1, MM_KEY_ADD_CFM, cfm);
@@ -4206,7 +4203,7 @@ int rwnx_send_dbg_trigger_req(struct rwnx_hw *rwnx_hw, char *msg)
 		return -ENOMEM;
 
 	/* Set parameters for the MM_DBG_TRIGGER_REQ message */
-	strncpy(req->error, msg, sizeof(req->error));
+	strscpy_pad(req->error, msg, sizeof(req->error));
 
 	/* Send the MM_DBG_TRIGGER_REQ message to LMAC FW */
 	return rwnx_send_msg(rwnx_hw, req, 0, -1, NULL);

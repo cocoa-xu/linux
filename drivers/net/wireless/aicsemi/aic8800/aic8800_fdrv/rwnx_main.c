@@ -798,7 +798,7 @@ static void rwnx_csa_finish(struct work_struct *ws)
 			rwnx_txq_vif_stop(vif, RWNX_TXQ_STOP_CHAN, rwnx_hw);
 		spin_unlock_bh(&rwnx_hw->cb_lock);
 #if (LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION3)
-		cfg80211_ch_switch_notify(vif->ndev, &csa->chandef, 0, 0);
+		cfg80211_ch_switch_notify(vif->ndev, &csa->chandef, 0);
 #elif (LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION)
 		cfg80211_ch_switch_notify(vif->ndev, &csa->chandef, 0);
 #else
@@ -1730,7 +1730,7 @@ void aicwf_p2p_alive_timeout(struct timer_list *t)
 	rwnx_vif = (struct rwnx_vif *)data;
 	rwnx_hw = rwnx_vif->rwnx_hw;
 	#else
-	rwnx_hw = from_timer(rwnx_hw, t, p2p_alive_timer);
+	rwnx_hw = timer_container_of(rwnx_hw, t, p2p_alive_timer);
 	rwnx_vif = rwnx_hw->p2p_dev_vif;
 	#endif
 
@@ -2166,7 +2166,7 @@ static void rwnx_cfgp2p_stop_p2p_device(struct wiphy *wiphy, struct wireless_dev
 	if (rwnx_vif == rwnx_hw->p2p_dev_vif) {
 		rwnx_hw->is_p2p_alive = 0;
 		if (timer_pending(&rwnx_hw->p2p_alive_timer)) {
-			del_timer_sync(&rwnx_hw->p2p_alive_timer);
+			timer_delete_sync(&rwnx_hw->p2p_alive_timer);
 		}
 
 		if (rwnx_vif->up) {
@@ -2836,7 +2836,7 @@ static int rwnx_cfg80211_add_station(struct wiphy *wiphy,
 			#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
 			sinfo.filled |= STATION_INFO_ASSOC_REQ_IES;
 			#endif
-			cfg80211_new_sta(rwnx_vif->ndev, sta->mac_addr, &sinfo, GFP_KERNEL);
+			cfg80211_new_sta(rwnx_vif->ndev->ieee80211_ptr, sta->mac_addr, &sinfo, GFP_KERNEL);
 		}
 
 #ifdef CONFIG_BAND_STEERING
@@ -2952,7 +2952,7 @@ static int rwnx_cfg80211_del_station_compat(struct wiphy *wiphy,
 				}
 			}
 			if (rwnx_vif->wdev.iftype == NL80211_IFTYPE_AP || rwnx_vif->wdev.iftype == NL80211_IFTYPE_P2P_GO) {
-				cfg80211_del_sta(rwnx_vif->ndev, cur->mac_addr, GFP_KERNEL);
+				cfg80211_del_sta(rwnx_vif->ndev->ieee80211_ptr, cur->mac_addr, GFP_KERNEL);
 			}
 
 #ifdef AICWF_RX_REORDER
@@ -3145,9 +3145,9 @@ void apm_probe_sta_work_process(struct work_struct *work)
        printk("sta %pM found = %d\n", mac, found);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0)
        if(found)
-               cfg80211_probe_status(rwnx_vif->ndev, mac, (u64)rwnx_vif->sta_probe.probe_id, 1, 0, false, GFP_ATOMIC);
+               cfg80211_probe_status(rwnx_vif->ndev, mac, (u64)rwnx_vif->sta_probe.probe_id, -1, 1, 0, false, GFP_ATOMIC);
        else
-               cfg80211_probe_status(rwnx_vif->ndev, mac, (u64)rwnx_vif->sta_probe.probe_id, 0, 0, false, GFP_ATOMIC);
+               cfg80211_probe_status(rwnx_vif->ndev, mac, (u64)rwnx_vif->sta_probe.probe_id, -1, 0, 0, false, GFP_ATOMIC);
 #else
 	if(found)
                 cfg80211_probe_status(rwnx_vif->ndev, mac, (u64)rwnx_vif->sta_probe.probe_id, 1, GFP_ATOMIC);
@@ -3512,7 +3512,7 @@ static int rwnx_cfg80211_stop_ap(struct wiphy *wiphy, struct net_device *dev)
 	rwnx_vif->ap.start = false;
 	aicwf_nl_hook_deinit(rwnx_vif->ap.band, rwnx_vif->rwnx_hw->iface_idx);
 	if (timer_pending(&rwnx_vif->steer_timer))
-		del_timer_sync(&rwnx_vif->steer_timer);
+		timer_delete_sync(&rwnx_vif->steer_timer);
 	cancel_work_sync(&rwnx_vif->steer_work);
 #if 0
 	flush_workqueue(rwnx_vif->rsp_wq);
@@ -4308,7 +4308,7 @@ int rwnx_cfg80211_channel_switch (struct wiphy *wiphy,
 	} else {
 		INIT_WORK(&csa->work, rwnx_csa_finish);
 #if LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION4
-		cfg80211_ch_switch_started_notify(dev, &csa->chandef, 0, params->count, false, 0);
+		cfg80211_ch_switch_started_notify(dev, &csa->chandef, 0, params->count, false);
 #elif LINUX_VERSION_CODE >= HIGH_KERNEL_VERSION2
 		cfg80211_ch_switch_started_notify(dev, &csa->chandef, 0, params->count, false);
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(5, 11, 0)
@@ -5297,6 +5297,127 @@ static int rwnx_cfg80211_leave_mesh(struct wiphy *wiphy, struct net_device *dev)
 	return 0;
 }
 
+/* Linux 7.x cfg80211_ops: adapt to the callbacks above. */
+static int rwnx_add_key_7(struct wiphy *wiphy, struct wireless_dev *wdev, int link_id,
+			  u8 key_index, bool pairwise, const u8 *mac_addr,
+			  struct key_params *params)
+{
+	return rwnx_cfg80211_add_key(wiphy, wdev->netdev, link_id, key_index, pairwise,
+				     mac_addr, params);
+}
+
+static int rwnx_get_key_7(struct wiphy *wiphy, struct wireless_dev *wdev, int link_id,
+			  u8 key_index, bool pairwise, const u8 *mac_addr, void *cookie,
+			  void (*callback)(void *cookie, struct key_params *))
+{
+	return rwnx_cfg80211_get_key(wiphy, wdev->netdev, link_id, key_index, pairwise,
+				     mac_addr, cookie, callback);
+}
+
+static int rwnx_del_key_7(struct wiphy *wiphy, struct wireless_dev *wdev, int link_id,
+			  u8 key_index, bool pairwise, const u8 *mac_addr)
+{
+	return rwnx_cfg80211_del_key(wiphy, wdev->netdev, link_id, key_index, pairwise,
+				     mac_addr);
+}
+
+static int rwnx_set_default_mgmt_key_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+				       int link_id, u8 key_index)
+{
+	return rwnx_cfg80211_set_default_mgmt_key(wiphy, wdev->netdev, link_id, key_index);
+}
+
+static int rwnx_add_station_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+			      const u8 *mac, struct station_parameters *params)
+{
+	return rwnx_cfg80211_add_station(wiphy, wdev->netdev, mac, params);
+}
+
+static int rwnx_del_station_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+			      struct station_del_parameters *params)
+{
+	return rwnx_cfg80211_del_station_compat(wiphy, wdev->netdev, params);
+}
+
+static int rwnx_change_station_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+				 const u8 *mac, struct station_parameters *params)
+{
+	return rwnx_cfg80211_change_station(wiphy, wdev->netdev, mac, params);
+}
+
+static int rwnx_get_station_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+			      const u8 *mac, struct station_info *sinfo)
+{
+	return rwnx_cfg80211_get_station(wiphy, wdev->netdev, mac, sinfo);
+}
+
+static int rwnx_dump_station_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+			       int idx, u8 *mac, struct station_info *sinfo)
+{
+	return rwnx_cfg80211_dump_station(wiphy, wdev->netdev, idx, mac, sinfo);
+}
+
+static int rwnx_mgmt_tx_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+			  struct cfg80211_mgmt_tx_params *params, u64 cookie)
+{
+	u64 driver_cookie = cookie;
+
+	return rwnx_cfg80211_mgmt_tx(wiphy, wdev, params, &driver_cookie);
+}
+
+static int rwnx_change_beacon_7(struct wiphy *wiphy, struct net_device *dev,
+				struct cfg80211_ap_update *info)
+{
+	return rwnx_cfg80211_change_beacon(wiphy, dev, &info->beacon);
+}
+
+static int rwnx_set_monitor_channel_7(struct wiphy *wiphy, struct net_device *dev,
+				      struct cfg80211_chan_def *chandef)
+{
+	return rwnx_cfg80211_set_monitor_channel(wiphy, chandef);
+}
+
+static int rwnx_set_wiphy_params_7(struct wiphy *wiphy, int radio_idx, u32 changed)
+{
+	return rwnx_cfg80211_set_wiphy_params(wiphy, changed);
+}
+
+static int rwnx_set_tx_power_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+			       int radio_idx, enum nl80211_tx_power_setting type, int mbm)
+{
+	return rwnx_cfg80211_set_tx_power(wiphy, wdev, type, mbm);
+}
+
+static int rwnx_get_tx_power_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+			       int radio_idx, unsigned int link_id, int *dbm)
+{
+	return rwnx_cfg80211_get_tx_power(wiphy, wdev, dbm);
+}
+
+static int rwnx_remain_on_channel_7(struct wiphy *wiphy, struct wireless_dev *wdev,
+				    struct ieee80211_channel *chan, unsigned int duration,
+				    u64 cookie, const u8 *rx_addr)
+{
+	u64 driver_cookie = cookie;
+
+	return rwnx_cfg80211_remain_on_channel(wiphy, wdev, chan, duration, &driver_cookie);
+}
+
+static int rwnx_start_radar_detection_7(struct wiphy *wiphy, struct net_device *dev,
+					struct cfg80211_chan_def *chandef,
+					u32 cac_time_ms, int link_id)
+{
+	return rwnx_cfg80211_start_radar_detection(wiphy, dev, chandef, cac_time_ms);
+}
+
+static int rwnx_tdls_mgmt_7(struct wiphy *wiphy, struct net_device *dev, const u8 *peer,
+			    int link_id, u8 action_code, u8 dialog_token, u16 status_code,
+			    u32 peer_capability, bool initiator, const u8 *buf, size_t len)
+{
+	return rwnx_cfg80211_tdls_mgmt(wiphy, dev, peer, action_code, dialog_token,
+				       status_code, peer_capability, initiator, buf, len);
+}
+
 static struct cfg80211_ops rwnx_cfg80211_ops = {
 	.add_virtual_intf = rwnx_cfg80211_add_iface,
 	.del_virtual_intf = rwnx_cfg80211_del_iface,
@@ -5306,32 +5427,31 @@ static struct cfg80211_ops rwnx_cfg80211_ops = {
 	.scan = rwnx_cfg80211_scan,
 	.connect = rwnx_cfg80211_connect,
 	.disconnect = rwnx_cfg80211_disconnect,
-	.add_key = rwnx_cfg80211_add_key,
-	.get_key = rwnx_cfg80211_get_key,
-	.del_key = rwnx_cfg80211_del_key,
+	.add_key = rwnx_add_key_7,
+	.get_key = rwnx_get_key_7,
+	.del_key = rwnx_del_key_7,
 	.set_default_key = rwnx_cfg80211_set_default_key,
-	.set_default_mgmt_key = rwnx_cfg80211_set_default_mgmt_key,
-	.add_station = rwnx_cfg80211_add_station,
-	.del_station = rwnx_cfg80211_del_station_compat,
-	.change_station = rwnx_cfg80211_change_station,
-	.mgmt_tx = rwnx_cfg80211_mgmt_tx,
+	.set_default_mgmt_key = rwnx_set_default_mgmt_key_7,
+	.add_station = rwnx_add_station_7,
+	.del_station = rwnx_del_station_7,
+	.change_station = rwnx_change_station_7,
+	.mgmt_tx = rwnx_mgmt_tx_7,
 	.start_ap = rwnx_cfg80211_start_ap,
-	.change_beacon = rwnx_cfg80211_change_beacon,
+	.change_beacon = rwnx_change_beacon_7,
 	.stop_ap = rwnx_cfg80211_stop_ap,
-	.set_monitor_channel = rwnx_cfg80211_set_monitor_channel,
-	.probe_client = rwnx_cfg80211_probe_client,
+	.set_monitor_channel = rwnx_set_monitor_channel_7,
 //	.mgmt_frame_register = rwnx_cfg80211_mgmt_frame_register,
-	.set_wiphy_params = rwnx_cfg80211_set_wiphy_params,
+	.set_wiphy_params = rwnx_set_wiphy_params_7,
 	.set_txq_params = rwnx_cfg80211_set_txq_params,
-	.set_tx_power = rwnx_cfg80211_set_tx_power,
-    .get_tx_power = rwnx_cfg80211_get_tx_power,
+	.set_tx_power = rwnx_set_tx_power_7,
+	.get_tx_power = rwnx_get_tx_power_7,
 	.set_power_mgmt = rwnx_cfg80211_set_power_mgmt,
-	.get_station = rwnx_cfg80211_get_station,
-	.remain_on_channel = rwnx_cfg80211_remain_on_channel,
+	.get_station = rwnx_get_station_7,
+	.remain_on_channel = rwnx_remain_on_channel_7,
 	.cancel_remain_on_channel = rwnx_cfg80211_cancel_remain_on_channel,
 	.dump_survey = rwnx_cfg80211_dump_survey,
 	.get_channel = rwnx_cfg80211_get_channel,
-	.start_radar_detection = rwnx_cfg80211_start_radar_detection,
+	.start_radar_detection = rwnx_start_radar_detection_7,
 	.update_ft_ies = rwnx_cfg80211_update_ft_ies,
 	.set_cqm_rssi_config = rwnx_cfg80211_set_cqm_rssi_config,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)
@@ -5341,7 +5461,7 @@ static struct cfg80211_ops rwnx_cfg80211_ops = {
 	.tdls_channel_switch = rwnx_cfg80211_tdls_channel_switch,
 	.tdls_cancel_channel_switch = rwnx_cfg80211_tdls_cancel_channel_switch,
 #endif
-	.tdls_mgmt = rwnx_cfg80211_tdls_mgmt,
+	.tdls_mgmt = rwnx_tdls_mgmt_7,
 	.tdls_oper = rwnx_cfg80211_tdls_oper,
 	.change_bss = rwnx_cfg80211_change_bss,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 17, 0) || defined(CONFIG_WPA3_FOR_OLD_KERNEL)
@@ -5438,8 +5558,8 @@ static void rwnx_enable_mesh(struct rwnx_hw *rwnx_hw)
 	if (!rwnx_mod_params.mesh)
 		return;
 
-	rwnx_cfg80211_ops.get_station = rwnx_cfg80211_get_station;
-	rwnx_cfg80211_ops.dump_station = rwnx_cfg80211_dump_station;
+	rwnx_cfg80211_ops.get_station = rwnx_get_station_7;
+	rwnx_cfg80211_ops.dump_station = rwnx_dump_station_7;
 	rwnx_cfg80211_ops.add_mpath = rwnx_cfg80211_add_mpath;
 	rwnx_cfg80211_ops.del_mpath = rwnx_cfg80211_del_mpath;
 	rwnx_cfg80211_ops.change_mpath = rwnx_cfg80211_change_mpath;
@@ -6139,7 +6259,7 @@ void rwnx_cfg80211_deinit(struct rwnx_hw *rwnx_hw)
 		list_for_each_entry(defrag_ctrl, &rwnx_hw->defrag_list, list) {
 			list_del_init(&defrag_ctrl->list);
 			if (timer_pending(&defrag_ctrl->defrag_timer))
-				del_timer_sync(&defrag_ctrl->defrag_timer);
+				timer_delete_sync(&defrag_ctrl->defrag_timer);
 			dev_kfree_skb(defrag_ctrl->skb);
 			kfree(defrag_ctrl);
 		}
@@ -6270,7 +6390,7 @@ static void __exit rwnx_mod_exit(void)
 
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
-MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
 #endif
 
 module_init(rwnx_mod_init);

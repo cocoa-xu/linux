@@ -548,7 +548,7 @@ static int rwnx_plat_tl4_fw_upload(struct rwnx_plat *rwnx_plat, u8 *fw_addr,
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 4, 0)
-MODULE_IMPORT_NS(VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver);
+MODULE_IMPORT_NS("VFS_internal_I_am_really_a_filesystem_and_am_NOT_a_driver");
 #endif
 
 #if 0
@@ -1223,7 +1223,7 @@ static int parse_key_val(const char *str, const char *key, char *val)
 		p--;
 
 	p++;
-	strncpy(val, dst, p -dst);
+	strscpy_pad(val, dst, p -dst);
 	val[p - dst] = 0;
 	return 0;
 }
@@ -2834,7 +2834,7 @@ int ParseQualifiedString(char *In, u32 *Start, char *Out, char LeftQualifier, ch
     if (c == '\0')
         return 0;
     j = (*Start) - 2;
-    strncpy((char *)Out, (const char *)(In + i), j - i + 1);
+    strscpy_pad((char *)Out, (const char *)(In + i), j - i + 1);
     return 1;
 }
 
@@ -3047,7 +3047,7 @@ void rwnx_plat_powerlimit_parsing(char *buffer, int size)
 					goto exit;
 				}
 
-				strncpy(reg_name[forCnt], szLine + i_cc, i - i_cc);
+				strscpy_pad(reg_name[forCnt], szLine + i_cc, i - i_cc);
 				reg_name[forCnt][i - i_cc] = '\0';
 				AICWFDBG(LOGINFO, "reg_name: %s\n", reg_name[forCnt]);
 

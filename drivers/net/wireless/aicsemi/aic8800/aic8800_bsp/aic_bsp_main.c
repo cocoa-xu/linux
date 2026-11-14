@@ -3,7 +3,8 @@
 #include <linux/errno.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/of_gpio.h>
+#include <linux/gpio/consumer.h>
+#include <linux/of.h>
 #include <linux/version.h>
 #include <linux/platform_device.h>
 #include "aic_bsp_driver.h"
@@ -434,15 +435,17 @@ static int __init aicbsp_init(void)
 	aicbsp_set_subsys(AIC_BLUETOOTH, AIC_PWR_ON);
 #endif
 
-	reset_gpio = devm_gpiod_get(&aicbsp_pdev->dev, "reset", GPIOD_OUT_HIGH);
+	reset_gpio = devm_gpiod_get_optional(&aicbsp_pdev->dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(reset_gpio)) {
 		dev_err(&aicbsp_pdev->dev, "Failed to get reset-gpio\n");
 		return PTR_ERR(reset_gpio);
 	}
 
-	gpiod_set_value(reset_gpio, 0);
-	msleep(1);
-	gpiod_set_value(reset_gpio, 1);
+	if (reset_gpio) {
+		gpiod_set_value(reset_gpio, 0);
+		msleep(1);
+		gpiod_set_value(reset_gpio, 1);
+	}
 
 	return 0;
 }
