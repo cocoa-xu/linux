@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/phy/axera,ax620e-usb2-phy.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E USB 2.0 PHY
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  UTMI PHY of the DWC3 USB 2.0 controller on Axera AX620E SoCs. Its reset,
+  reference clock and the VBUS-valid override live in FLASH_SYS.
+
+properties:
+  compatible:
+    const: axera,ax620e-usb2-phy
+
+  axera,flash-sys:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: The FLASH_SYS clock and reset controller.
+
+  clocks:
+    maxItems: 1
+
+  resets:
+    maxItems: 1
+
+  '#phy-cells':
+    const: 0
+
+required:
+  - compatible
+  - axera,flash-sys
+  - resets
+  - '#phy-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/axera,ax620e-flash-sys.h>
+    #include <dt-bindings/reset/axera,ax620e-flash-sys.h>
+
+    usb-phy {
+        compatible = "axera,ax620e-usb2-phy";
+        axera,flash-sys = <&flash_sys>;
+        clocks = <&flash_sys AX620E_FLASH_CLK_USB2_REF_ALT>;
+        resets = <&flash_sys AX620E_FLASH_RST_USB2_PHY>;
+        #phy-cells = <0>;
+    };

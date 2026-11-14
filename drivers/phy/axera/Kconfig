@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config PHY_AX620E_USB2
+	tristate "Axera AX620E USB 2.0 PHY"
+	depends on ARCH_AXERA || COMPILE_TEST
+	depends on OF
+	select GENERIC_PHY
+	select MFD_SYSCON
+	help
+	  Reset, reference clock and VBUS-valid override of the USB 2.0 PHY
+	  of the DWC3 controller on Axera AX620E SoCs.
