@@ -81,5 +81,15 @@
 			reg-shift = <2>;
 			reg-io-width = <4>;
 		};
+
+		usb@8000000 {
+			compatible = "snps,dwc3";
+			reg = <0x08000000 0x100000>;
+			interrupts = <GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
+			dr_mode = "peripheral";
+			maximum-speed = "high-speed";
+			phy_type = "utmi";
+			snps,dis-u2-freeclk-exists-quirk;
+		};
 	};
 };
