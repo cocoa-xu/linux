@@ -73,6 +73,18 @@ config SERIAL_AMBA_PL011_CONSOLE
 	  your boot loader (lilo or loadlin) about how to pass options to the
 	  kernel at boot time.)
 
+config SERIAL_EARLYCON_RAMLOG
+	bool "Early console into a reserved RAM region"
+	depends on ARM && MMU
+	select SERIAL_CORE
+	select SERIAL_CORE_CONSOLE
+	select SERIAL_EARLYCON
+	help
+	  Bring-up aid for boards without a serial console: printk output is
+	  written uncached to a reserved RAM region that survives a warm
+	  reset, so the next boot can read it. Enable with
+	  earlycon=ramlog,<phys> keep_bootcon.
+
 config SERIAL_EARLYCON_SEMIHOST
 	bool "Early console using Arm compatible semihosting"
 	depends on ARM64 || ARM || RISCV

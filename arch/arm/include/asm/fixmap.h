@@ -9,8 +9,15 @@
 #include <linux/pgtable.h>
 #include <asm/kmap_size.h>
 
+/* The early fixmap is one PTE table shared with early_ioremap: 30 pages left. */
+#define RAMLOG_PAGES		28
+
 enum fixed_addresses {
 	FIX_EARLYCON_MEM_BASE,
+#ifdef CONFIG_SERIAL_EARLYCON_RAMLOG
+	FIX_RAMLOG_BEGIN,
+	FIX_RAMLOG_END = FIX_RAMLOG_BEGIN + RAMLOG_PAGES - 1,
+#endif
 	__end_of_permanent_fixed_addresses,
 
 	FIX_KMAP_BEGIN = __end_of_permanent_fixed_addresses,
