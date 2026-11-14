@@ -239,8 +239,10 @@ struct ax_vin {
 	void __iomem *dphy;
 	struct regmap *comm;
 	int irq;
-	/* CSI-2 receive errors */
+	/* CSI-2 receive errors, as read by the interrupt for its thread */
 	int csi_irq;
+	u32 csi_err;
+	u32 csi_phy_err;
 	unsigned int csi_recoveries;
 
 	struct v4l2_device v4l2_dev;
@@ -616,8 +618,8 @@ static irqreturn_t ax_vin_csi_irq(int irq, void *data)
 		return IRQ_NONE;
 	writel(err, vin->csi + CSI_ERR_STATUS);
 	writel(phy, vin->csi + CSI_PHY_ERR_STATUS);
-	if (!phy && !(err & CSI_ERR_RECOVER))
-		return IRQ_HANDLED;
+	vin->csi_err = err;
+	vin->csi_phy_err = phy;
 
 	return IRQ_WAKE_THREAD;
 }
@@ -626,16 +628,24 @@ static irqreturn_t ax_vin_csi_irq(int irq, void *data)
  * The vendor driver's recovery from a broken packet or lane: restart the
  * receiver and deskew with the data lanes off, so that it locks on the next
  * packet start again.
+ *
+ * The line stays masked until this returns (oneshot), and this returns no
+ * sooner than a millisecond: a source that keeps failing would otherwise
+ * keep the CPU in the hard handler, this thread would never run, and the
+ * kernel would disable the interrupt as unhandled.
  */
 static irqreturn_t ax_vin_csi_irq_thread(int irq, void *data)
 {
 	struct ax_vin *vin = data;
 
-	writel(DPHY_LANE_EN_DATA, vin->dphy + DPHY_LANE_EN_CLR);
-	writel(GLB_RST0_CSIRX_RECOVER, vin->glb + GLB_RST0_ASSERT);
-	writel(GLB_RST0_CSIRX_RECOVER, vin->glb + GLB_RST0_DEASSERT);
-	writel(DPHY_LANE_EN_DATA, vin->dphy + DPHY_LANE_EN_SET);
-	WRITE_ONCE(vin->csi_recoveries, vin->csi_recoveries + 1);
+	if (vin->csi_phy_err || vin->csi_err & CSI_ERR_RECOVER) {
+		writel(DPHY_LANE_EN_DATA, vin->dphy + DPHY_LANE_EN_CLR);
+		writel(GLB_RST0_CSIRX_RECOVER, vin->glb + GLB_RST0_ASSERT);
+		writel(GLB_RST0_CSIRX_RECOVER, vin->glb + GLB_RST0_DEASSERT);
+		writel(DPHY_LANE_EN_DATA, vin->dphy + DPHY_LANE_EN_SET);
+		WRITE_ONCE(vin->csi_recoveries, vin->csi_recoveries + 1);
+	}
+	usleep_range(1000, 2000);
 
 	return IRQ_HANDLED;
 }
@@ -1167,7 +1177,7 @@ static int ax_vin_probe(struct platform_device *pdev)
 	if (vin->csi_irq < 0)
 		return vin->csi_irq;
 	ret = devm_request_threaded_irq(dev, vin->csi_irq, ax_vin_csi_irq,
-					ax_vin_csi_irq_thread, 0,
+					ax_vin_csi_irq_thread, IRQF_ONESHOT,
 					AX_VIN_NAME "-csi", vin);
 	if (ret)
 		return ret;
