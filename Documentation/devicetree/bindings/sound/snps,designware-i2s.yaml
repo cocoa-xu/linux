@@ -16,6 +16,7 @@ properties:
           - const: canaan,k210-i2s
           - const: snps,designware-i2s
       - enum:
+          - axera,ax620e-i2s
           - snps,designware-i2s
           - starfive,jh7110-i2stx0
           - starfive,jh7110-i2stx1
