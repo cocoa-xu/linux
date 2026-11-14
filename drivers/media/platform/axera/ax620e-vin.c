@@ -237,6 +237,7 @@ struct ax_vin {
 	bool stopping;
 	bool idle;
 	wait_queue_head_t idle_wq;
+	unsigned int mid_frame_stops;
 
 	struct v4l2_pix_format fmt;
 };
@@ -665,8 +666,10 @@ static void ax_vin_stop_streaming(struct vb2_queue *q)
 
 	/* At most the armed frame and the one being written. */
 	if (!wait_event_timeout(vin->idle_wq, READ_ONCE(vin->idle),
-				msecs_to_jiffies(200)))
+				msecs_to_jiffies(200))) {
+		WRITE_ONCE(vin->mid_frame_stops, vin->mid_frame_stops + 1);
 		dev_warn(vin->dev, "no frame end, stopping mid-frame\n");
+	}
 
 	if (vin->source)
 		v4l2_subdev_call(vin->source, video, s_stream, 0);
@@ -1113,6 +1116,25 @@ static void ax_vin_remove(struct platform_device *pdev)
 	mutex_destroy(&vin->lock);
 }
 
+/*
+ * Stops in the middle of a frame since boot: after one, frames may come out
+ * shifted until the SoC is reset.
+ */
+static ssize_t mid_frame_stops_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct ax_vin *vin = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%u\n", READ_ONCE(vin->mid_frame_stops));
+}
+static DEVICE_ATTR_RO(mid_frame_stops);
+
+static struct attribute *ax_vin_attrs[] = {
+	&dev_attr_mid_frame_stops.attr,
+	NULL
+};
+ATTRIBUTE_GROUPS(ax_vin);
+
 static const struct of_device_id ax_vin_of_match[] = {
 	{ .compatible = "axera,ax620e-vin" },
 	{ }
@@ -1125,6 +1147,7 @@ static struct platform_driver ax_vin_driver = {
 	.driver = {
 		.name = AX_VIN_NAME,
 		.of_match_table = ax_vin_of_match,
+		.dev_groups = ax_vin_groups,
 	},
 };
 module_platform_driver(ax_vin_driver);
