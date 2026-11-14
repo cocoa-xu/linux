@@ -62,11 +62,15 @@
 			no-map;
 		};
 
-		/* 4K YUYV frames are 16 MiB each. */
+		/*
+		 * 4K YUYV frames are 16 MiB each: four captured frames and four
+		 * worst-case JPEGs fit in 192 MiB. 256 MiB does not fit above a
+		 * device tree that U-Boot leaves in place around 0x45800000.
+		 */
 		linux,cma {
 			compatible = "shared-dma-pool";
 			reusable;
-			size = <0x10000000>;
+			size = <0x0c000000>;
 			linux,cma-default;
 		};
 	};
