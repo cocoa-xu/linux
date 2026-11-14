@@ -1,0 +1,90 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/axera,ax620e-vin.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E video input
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  MIPI D-PHY receiver, CSI-2 controller and ISP front end of the Axera
+  AX620E SoCs, used in YUV bypass mode to write received frames to memory.
+
+properties:
+  compatible:
+    const: axera,ax620e-vin
+
+  reg:
+    items:
+      - description: ISP registers, including the front end and its write DMA
+      - description: ISP subsystem clock and reset registers
+      - description: CSI-2 controller 0
+      - description: MIPI D-PHY receiver
+
+  reg-names:
+    items:
+      - const: isp
+      - const: glb
+      - const: csi
+      - const: dphy
+
+  interrupts:
+    maxItems: 1
+
+  axera,comm-glb:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description: COMM_GLB syscon holding the D-PHY power and TLB clock bits.
+
+  port:
+    $ref: /schemas/graph.yaml#/$defs/port-base
+    unevaluatedProperties: false
+
+    properties:
+      endpoint:
+        $ref: video-interfaces.yaml#
+        unevaluatedProperties: false
+
+        properties:
+          data-lanes:
+            items:
+              - const: 1
+              - const: 2
+              - const: 3
+              - const: 4
+
+        required:
+          - data-lanes
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - interrupts
+  - axera,comm-glb
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
+    video-capture@2400000 {
+        compatible = "axera,ax620e-vin";
+        reg = <0x02400000 0x100000>,
+              <0x02500000 0x1000>,
+              <0x02600000 0x1000>,
+              <0x023f0000 0x1000>;
+        reg-names = "isp", "glb", "csi", "dphy";
+        interrupts = <GIC_SPI 27 IRQ_TYPE_LEVEL_HIGH>;
+        axera,comm-glb = <&comm_glb>;
+
+        port {
+            vin_in: endpoint {
+                remote-endpoint = <&bridge_out>;
+                data-lanes = <1 2 3 4>;
+            };
+        };
+    };

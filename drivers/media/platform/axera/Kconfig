@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+comment "Axera media platform drivers"
+
+config VIDEO_AX620E_VIN
+	tristate "Axera AX620E video input"
+	depends on ARCH_AXERA || COMPILE_TEST
+	depends on V4L_PLATFORM_DRIVERS
+	depends on VIDEO_DEV
+	depends on OF
+	select MFD_SYSCON
+	select V4L2_FWNODE
+	select VIDEOBUF2_DMA_CONTIG
+	help
+	  Capture driver for the MIPI CSI-2 receiver and ISP front end of
+	  the Axera AX620E SoCs, in YUV bypass mode (HDMI/DP to CSI-2
+	  bridges such as the Lontium LT7911EXC).
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called ax620e-vin.
