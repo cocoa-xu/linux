@@ -173,7 +173,7 @@ void hantro_vc8000e_jpeg_enc_done(struct hantro_ctx *ctx)
 			      ctx->vpu_dst_fmt->header_size + bytesused);
 }
 
-irqreturn_t hantro_vc8000e_irq(int irq, void *dev_id)
+irqreturn_t hantro_vc8000e_jpeg_enc_irq(int irq, void *dev_id)
 {
 	struct hantro_dev *vpu = dev_id;
 	enum vb2_buffer_state state;

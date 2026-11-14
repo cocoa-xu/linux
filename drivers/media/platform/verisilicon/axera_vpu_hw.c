@@ -46,7 +46,7 @@ static const struct hantro_codec_ops ax620e_jenc_codec_ops[] = {
 };
 
 static const struct hantro_irq ax620e_jenc_irqs[] = {
-	{ "jenc", hantro_vc8000e_irq },
+	{ "jenc", hantro_vc8000e_jpeg_enc_irq },
 };
 
 static const char * const ax620e_jenc_clk_names[] = { "jenc" };

@@ -460,7 +460,7 @@ int rockchip_vpu2_jpeg_enc_run(struct hantro_ctx *ctx);
 void hantro_h1_jpeg_enc_done(struct hantro_ctx *ctx);
 int hantro_vc8000e_jpeg_enc_run(struct hantro_ctx *ctx);
 void hantro_vc8000e_jpeg_enc_done(struct hantro_ctx *ctx);
-irqreturn_t hantro_vc8000e_irq(int irq, void *dev_id);
+irqreturn_t hantro_vc8000e_jpeg_enc_irq(int irq, void *dev_id);
 void hantro_vc8000e_reset(struct hantro_ctx *ctx);
 void rockchip_vpu2_jpeg_enc_done(struct hantro_ctx *ctx);
 
