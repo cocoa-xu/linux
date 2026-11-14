@@ -32,6 +32,14 @@
 			device_type = "cpu";
 			compatible = "arm,cortex-a53";
 			reg = <0>;
+			enable-method = "axera,ax620e-smp";
+		};
+
+		cpu@1 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <1>;
+			enable-method = "axera,ax620e-smp";
 		};
 	};
 
