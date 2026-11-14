@@ -88,11 +88,36 @@
 			reg-io-width = <4>;
 		};
 
+		/*
+		 * SD pad group G9: one register per pin, function in [18:16],
+		 * pull-up bit 7, pull-down bit 6, drive strength [3:0].
+		 */
+		pinctrl@104f1000 {
+			compatible = "pinctrl-single";
+			reg = <0x104f1000 0x60>;
+			#pinctrl-cells = <1>;
+			pinctrl-single,register-width = <32>;
+			pinctrl-single,function-mask = <0x700ff>;
+
+			sd_pins: sd-pins {
+				pinctrl-single,pins = <
+					0x0c 0x85	/* SD_DAT0 */
+					0x18 0x85	/* SD_DAT1 */
+					0x24 0x05	/* SD_CLK */
+					0x30 0x85	/* SD_CMD */
+					0x3c 0x85	/* SD_DAT2 */
+					0x48 0x85	/* SD_DAT3 */
+				>;
+			};
+		};
+
 		mmc@104e0000 {
 			compatible = "cdns,sd4hc";
 			reg = <0x104e0000 0x10000>;
 			interrupts = <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&sd_clk>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&sd_pins>;
 			bus-width = <4>;
 			max-frequency = <33333333>;
 			cap-sd-highspeed;
