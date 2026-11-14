@@ -7,6 +7,10 @@
  * timings and the audio sample rate through a register page. The host reads
  * that page on the interrupt the firmware raises when the video or the
  * audio appears or disappears.
+ *
+ * The EDID the bridge presents to the source is kept in the same SPI flash
+ * as the firmware, in a 64 KiB block of its own, which the host reaches
+ * through a flash controller on the same register page.
  */
 
 #include <linux/delay.h>
@@ -14,6 +18,7 @@
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/regmap.h>
 #include <linux/v4l2-dv-timings.h>
 
@@ -40,6 +45,38 @@
 #define REG_H_ACTIVE			CCI_REG16(0xe08c)
 #define REG_V_ACTIVE			CCI_REG16(0xe08e)
 #define REG_AUDIO_RATE			CCI_REG8(0xe0ad)	/* kHz */
+
+/* SPI flash controller, programmed the way the vendor driver does. */
+#define REG_FLASH_RUN			CCI_REG8(0xe051)
+#define REG_FLASH_CMD			CCI_REG8(0xe054)
+#define  FLASH_CMD_OPCODE		0x01
+#define  FLASH_CMD_ADDRESS		0x05
+#define  FLASH_CMD_READ			0x45
+#define REG_FLASH_OPCODE		CCI_REG8(0xe055)
+#define REG_FLASH_LENGTH		CCI_REG8(0xe056)
+#define REG_FLASH_57			CCI_REG8(0xe057)
+#define REG_FLASH_58			CCI_REG8(0xe058)
+#define REG_FLASH_ADDR_H		CCI_REG8(0xe05a)
+#define REG_FLASH_ADDR_M		CCI_REG8(0xe05b)
+#define REG_FLASH_ADDR_L		CCI_REG8(0xe05c)
+#define REG_FLASH_WDATA			0xe05d
+#define REG_FLASH_RDATA			0xe05e
+#define REG_FLASH_PROG			CCI_REG8(0xe05f)
+#define  FLASH_PROG_IDLE		0x00
+#define  FLASH_PROG_WRITE		0x01
+#define  FLASH_PROG_FIFO_RESET		0x08
+#define REG_FLASH_ENABLE		CCI_REG8(0xe0ee)
+
+#define SPI_NOR_WREN			0x06
+#define SPI_NOR_READ			0x03
+#define SPI_NOR_BLOCK_ERASE		0xd8	/* 64 KiB */
+
+#define LT7911EXC_FLASH_PAGE		32
+#define LT7911EXC_EDID_ADDR		0x60000
+#define LT7911EXC_EDID_BLOCK_SIZE	128
+#define LT7911EXC_EDID_MAX_BLOCKS	4
+#define LT7911EXC_EDID_SIZE		(LT7911EXC_EDID_BLOCK_SIZE * \
+					 LT7911EXC_EDID_MAX_BLOCKS)
 
 #define LT7911EXC_LANES			4
 
@@ -107,9 +144,16 @@ struct lt7911exc {
 	struct v4l2_ctrl *audio_present;
 	struct regmap *regmap;
 	struct gpio_desc *reset_gpio;
+	int irq;
 	/* Detected input timings; zero width when there is no signal. */
 	struct v4l2_dv_timings detected;
 	struct v4l2_dv_timings timings;
+
+	/* Serializes the flash accesses and protects the EDID copy. */
+	struct mutex flash_lock;
+	u8 edid[LT7911EXC_EDID_SIZE];
+	/* Blocks in edid[], 0 until the flash has been read. */
+	unsigned int edid_blocks;
 };
 
 static const struct v4l2_event lt7911exc_ev_source_change = {
@@ -187,6 +231,268 @@ static void lt7911exc_update_audio(struct lt7911exc *lt, bool present)
 
 	v4l2_ctrl_s_ctrl(lt->audio_rate, rate);
 	v4l2_ctrl_s_ctrl(lt->audio_present, rate != 0);
+}
+
+static int lt7911exc_flash_cmd(struct lt7911exc *lt, u8 type, u8 opcode,
+			       u32 addr, u8 len)
+{
+	int ret = 0;
+
+	cci_write(lt->regmap, REG_FLASH_CMD, type, &ret);
+	cci_write(lt->regmap, REG_FLASH_OPCODE, opcode, &ret);
+	if (type == FLASH_CMD_READ) {
+		cci_write(lt->regmap, REG_FLASH_LENGTH, len, &ret);
+		cci_write(lt->regmap, REG_FLASH_57, 0, &ret);
+		cci_write(lt->regmap, REG_FLASH_58, 0, &ret);
+	}
+	if (type != FLASH_CMD_OPCODE) {
+		cci_write(lt->regmap, REG_FLASH_ADDR_H, (addr >> 16) & 0xff,
+			  &ret);
+		cci_write(lt->regmap, REG_FLASH_ADDR_M, (addr >> 8) & 0xff,
+			  &ret);
+		cci_write(lt->regmap, REG_FLASH_ADDR_L, addr & 0xff, &ret);
+	}
+	cci_write(lt->regmap, REG_FLASH_RUN, 1, &ret);
+	cci_write(lt->regmap, REG_FLASH_RUN, 0, &ret);
+
+	return ret;
+}
+
+static int lt7911exc_flash_read(struct lt7911exc *lt, u32 addr, u8 *buf,
+				size_t len)
+{
+	size_t off;
+	int ret = 0;
+
+	cci_write(lt->regmap, REG_FLASH_PROG, FLASH_PROG_FIFO_RESET, &ret);
+	cci_write(lt->regmap, REG_FLASH_PROG, FLASH_PROG_IDLE, &ret);
+	if (ret)
+		return ret;
+	/* As long as the vendor driver waits after a FIFO reset. */
+	msleep(1000);
+
+	for (off = 0; off < len; off += LT7911EXC_FLASH_PAGE) {
+		u8 n = min_t(size_t, len - off, LT7911EXC_FLASH_PAGE);
+
+		ret = lt7911exc_flash_cmd(lt, FLASH_CMD_READ, SPI_NOR_READ,
+					  addr + off, n);
+		if (!ret)
+			ret = regmap_bulk_read(lt->regmap, REG_FLASH_RDATA,
+					       buf + off, n);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+/*
+ * Erase the EDID block, and only that one: the firmware lives in block 0
+ * of the same flash.
+ */
+static int lt7911exc_flash_erase_edid(struct lt7911exc *lt)
+{
+	int ret;
+
+	ret = lt7911exc_flash_cmd(lt, FLASH_CMD_OPCODE, SPI_NOR_WREN, 0, 0);
+	if (!ret)
+		ret = lt7911exc_flash_cmd(lt, FLASH_CMD_ADDRESS,
+					  SPI_NOR_BLOCK_ERASE,
+					  LT7911EXC_EDID_ADDR, 0);
+	if (ret)
+		return ret;
+
+	/*
+	 * The controller offers no busy flag. The vendor driver waits 200 ms;
+	 * a 64 KiB NOR block erase may take up to about 2 s.
+	 */
+	msleep(2000);
+
+	return 0;
+}
+
+static int lt7911exc_flash_program(struct lt7911exc *lt, u32 addr,
+				   const u8 *buf, size_t len)
+{
+	size_t off;
+	int ret = 0;
+
+	for (off = 0; off < len; off += LT7911EXC_FLASH_PAGE) {
+		u32 page = addr + off;
+
+		cci_write(lt->regmap, REG_FLASH_ENABLE, 1, &ret);
+		cci_write(lt->regmap, REG_FLASH_PROG, FLASH_PROG_WRITE, &ret);
+		cci_write(lt->regmap, REG_FLASH_ADDR_H, (page >> 16) & 0xff,
+			  &ret);
+		cci_write(lt->regmap, REG_FLASH_ADDR_M, (page >> 8) & 0xff,
+			  &ret);
+		cci_write(lt->regmap, REG_FLASH_ADDR_L, page & 0xff, &ret);
+		if (!ret)
+			ret = regmap_raw_write(lt->regmap, REG_FLASH_WDATA,
+					       buf + off, LT7911EXC_FLASH_PAGE);
+		cci_write(lt->regmap, REG_FLASH_PROG, FLASH_PROG_IDLE, &ret);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static unsigned int lt7911exc_edid_blocks(const u8 *edid)
+{
+	static const u8 header[] = { 0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0 };
+
+	if (memcmp(edid, header, sizeof(header)))
+		return 0;
+
+	return min_t(unsigned int, edid[126] + 1, LT7911EXC_EDID_MAX_BLOCKS);
+}
+
+static bool lt7911exc_edid_valid(const u8 *edid, unsigned int blocks)
+{
+	unsigned int i;
+	u8 sum = 0;
+
+	if (lt7911exc_edid_blocks(edid) == 0)
+		return false;
+
+	for (i = 0; i < blocks * LT7911EXC_EDID_BLOCK_SIZE; i++) {
+		sum += edid[i];
+		if (i % LT7911EXC_EDID_BLOCK_SIZE ==
+		    LT7911EXC_EDID_BLOCK_SIZE - 1 && sum)
+			return false;
+	}
+
+	return true;
+}
+
+/* Called with flash_lock held and the interrupt disabled. */
+static int lt7911exc_load_edid(struct lt7911exc *lt)
+{
+	int ret = 0;
+
+	if (lt->edid_blocks)
+		return 0;
+
+	cci_write(lt->regmap, REG_FLASH_ENABLE, 1, &ret);
+	if (!ret)
+		ret = lt7911exc_flash_read(lt, LT7911EXC_EDID_ADDR, lt->edid,
+					   sizeof(lt->edid));
+	cci_write(lt->regmap, REG_FLASH_ENABLE, 0, &ret);
+	if (ret)
+		return ret;
+
+	lt->edid_blocks = lt7911exc_edid_blocks(lt->edid);
+
+	return lt->edid_blocks ? 0 : -ENODATA;
+}
+
+/* Called with flash_lock held and the interrupt disabled. */
+static int lt7911exc_store_edid(struct lt7911exc *lt, const u8 *edid,
+				unsigned int blocks)
+{
+	size_t len = blocks * LT7911EXC_EDID_BLOCK_SIZE;
+	int ret = 0;
+
+	lt->edid_blocks = 0;
+
+	cci_write(lt->regmap, REG_FLASH_ENABLE, 1, &ret);
+	if (!ret)
+		ret = lt7911exc_flash_erase_edid(lt);
+	if (!ret)
+		ret = lt7911exc_flash_program(lt, LT7911EXC_EDID_ADDR, edid,
+					      len);
+	if (!ret)
+		ret = lt7911exc_flash_read(lt, LT7911EXC_EDID_ADDR, lt->edid,
+					   sizeof(lt->edid));
+	cci_write(lt->regmap, REG_FLASH_ENABLE, 0, &ret);
+	if (ret)
+		return ret;
+
+	if (memcmp(lt->edid, edid, len)) {
+		dev_err(lt->sd.dev, "EDID verification failed\n");
+		return -EIO;
+	}
+
+	lt->edid_blocks = blocks;
+
+	return 0;
+}
+
+static void lt7911exc_flash_begin(struct lt7911exc *lt)
+{
+	/* The firmware must not see the host in the middle of an access. */
+	if (lt->irq > 0)
+		disable_irq(lt->irq);
+	mutex_lock(&lt->flash_lock);
+}
+
+static void lt7911exc_flash_end(struct lt7911exc *lt)
+{
+	mutex_unlock(&lt->flash_lock);
+	if (lt->irq > 0)
+		enable_irq(lt->irq);
+}
+
+static int lt7911exc_get_edid(struct v4l2_subdev *sd, struct v4l2_edid *edid)
+{
+	struct lt7911exc *lt = to_lt7911exc(sd);
+	int ret;
+
+	memset(edid->reserved, 0, sizeof(edid->reserved));
+	if (edid->pad)
+		return -EINVAL;
+
+	lt7911exc_flash_begin(lt);
+	ret = lt7911exc_load_edid(lt);
+	if (ret)
+		goto out;
+
+	if (!edid->start_block && !edid->blocks) {
+		edid->blocks = lt->edid_blocks;
+		goto out;
+	}
+	if (edid->start_block >= lt->edid_blocks || !edid->blocks) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	edid->blocks = min(edid->blocks, lt->edid_blocks - edid->start_block);
+	memcpy(edid->edid,
+	       lt->edid + edid->start_block * LT7911EXC_EDID_BLOCK_SIZE,
+	       edid->blocks * LT7911EXC_EDID_BLOCK_SIZE);
+out:
+	lt7911exc_flash_end(lt);
+
+	return ret;
+}
+
+static int lt7911exc_set_edid(struct v4l2_subdev *sd, struct v4l2_edid *edid)
+{
+	struct lt7911exc *lt = to_lt7911exc(sd);
+	int ret;
+
+	memset(edid->reserved, 0, sizeof(edid->reserved));
+	if (edid->pad || edid->start_block)
+		return -EINVAL;
+	if (edid->blocks > LT7911EXC_EDID_MAX_BLOCKS) {
+		edid->blocks = LT7911EXC_EDID_MAX_BLOCKS;
+		return -E2BIG;
+	}
+	/* Erasing the EDID would leave the source with nothing to read. */
+	if (!edid->blocks || !lt7911exc_edid_valid(edid->edid, edid->blocks))
+		return -EINVAL;
+
+	lt7911exc_flash_begin(lt);
+	ret = lt7911exc_store_edid(lt, edid->edid, edid->blocks);
+	lt7911exc_flash_end(lt);
+
+	if (!ret)
+		dev_info(sd->dev,
+			 "stored a %u block EDID; the source reads it when it reconnects\n",
+			 edid->blocks);
+
+	return ret;
 }
 
 static void lt7911exc_fill_format(struct lt7911exc *lt,
@@ -346,6 +652,8 @@ static const struct v4l2_subdev_pad_ops lt7911exc_pad_ops = {
 	.enum_mbus_code = lt7911exc_enum_mbus_code,
 	.enable_streams = lt7911exc_enable_streams,
 	.disable_streams = lt7911exc_disable_streams,
+	.get_edid = lt7911exc_get_edid,
+	.set_edid = lt7911exc_set_edid,
 	.s_dv_timings = lt7911exc_s_dv_timings,
 	.g_dv_timings = lt7911exc_g_dv_timings,
 	.query_dv_timings = lt7911exc_query_dv_timings,
@@ -478,6 +786,10 @@ static int lt7911exc_probe(struct i2c_client *client)
 	if (!lt)
 		return -ENOMEM;
 
+	ret = devm_mutex_init(dev, &lt->flash_lock);
+	if (ret)
+		return ret;
+
 	lt->regmap = devm_regmap_init_i2c(client, &lt7911exc_regmap_config);
 	if (IS_ERR(lt->regmap))
 		return dev_err_probe(dev, PTR_ERR(lt->regmap),
@@ -537,6 +849,7 @@ static int lt7911exc_probe(struct i2c_client *client)
 						dev_name(dev), lt);
 		if (ret)
 			return dev_err_probe(dev, ret, "failed to request irq\n");
+		lt->irq = client->irq;
 	}
 
 	ret = v4l2_async_register_subdev(&lt->sd);
