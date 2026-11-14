@@ -435,7 +435,9 @@
 			      <0x02600000 0x1000>,
 			      <0x023f0000 0x1000>;
 			reg-names = "isp", "glb", "csi", "dphy";
-			interrupts = <GIC_SPI 27 IRQ_TYPE_LEVEL_HIGH>;
+			interrupts = <GIC_SPI 27 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-names = "isp", "csi";
 			axera,comm-glb = <&comm_glb>;
 			pinctrl-names = "default";
 			pinctrl-0 = <&mipi_rx_pins>;
