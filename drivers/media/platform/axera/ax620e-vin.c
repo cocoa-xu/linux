@@ -138,6 +138,8 @@
 #define IFE				0x6400
 #define IFE_START			(IFE + 0x004)
 #define IFE_CTRL			(IFE + 0x008)
+/* Stop request of a channel: the IFE drops the frame it is in. */
+#define IFE_CTRL_STOP(ch)		BIT(ch)
 #define IFE_IN_EN			(IFE + 0x00c)
 #define IFE_UPDATE0			(IFE + 0x100)
 #define IFE_UPDATE1			(IFE + 0x104)
@@ -408,20 +410,28 @@ static void ax_vin_ife_start(struct ax_vin *vin)
 static void ax_vin_hw_stop(struct ax_vin *vin)
 {
 	void __iomem *isp = vin->isp, *glb = vin->glb;
+	/* The ISP only answers while clocked: at probe after a cold boot not. */
+	bool clocked = (readl(glb + GLB_EB0) & GLB_EB0_ISP) == GLB_EB0_ISP;
+	u32 status;
 
 	writel(0, isp + ISP_IRQ_EN(ISP_IRQ_SOF_GROUP));
 	writel(0, isp + ISP_IRQ_EN(ISP_IRQ_EOF_GROUP));
+	if (clocked) {
+		/*
+		 * Close the IFE input and drop the frame it is in, like the
+		 * fast stop of the vendor driver. A frame the source cut short
+		 * otherwise stays half-received in the IFE, and after the
+		 * resets every later frame comes out shifted until the SoC is
+		 * reset.
+		 */
+		writel(0, isp + IFE_IN_EN);
+		writel(IFE_CTRL_STOP(0), isp + IFE_CTRL);
+	}
 	writel(CSI_STREAM_STOP, vin->csi + CSI_STREAM_CTRL);
 	/* Let the write DMA drain what it already received. */
 	usleep_range(1000, 2000);
-	/*
-	 * Then stop its AXI port and wait for the writes in flight, as the
-	 * vendor driver does before a reset. The ISP only answers while
-	 * clocked: at probe after a cold boot it is not.
-	 */
-	if ((readl(glb + GLB_EB0) & GLB_EB0_ISP) == GLB_EB0_ISP) {
-		u32 status;
-
+	/* Then stop its AXI port and wait for the writes in flight. */
+	if (clocked) {
 		writel(ISP_AXI_STOP, isp + ISP_AXI_CTRL);
 		if (readl_poll_timeout(isp + ISP_AXI_STATUS, status, !status,
 				       200, 10 * USEC_PER_MSEC))
