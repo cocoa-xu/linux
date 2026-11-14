@@ -83,6 +83,36 @@
 		clock-output-names = "rtc_32k";
 	};
 
+	/* HPLL (1228.8 MHz, set up by the boot loader) / 100 */
+	hpll_12m288: clock-12288000 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <12288000>;
+		clock-output-names = "hpll_12m288";
+	};
+
+	/* The LT7911EXC passes HDMI/DP audio on as I2S, with no controls. */
+	hdmi_in_audio: audio-codec {
+		compatible = "linux,spdif-dir";
+		#sound-dai-cells = <0>;
+	};
+
+	sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "LT7911EXC";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,bitclock-master = <&hdmi_in_dai>;
+		simple-audio-card,frame-master = <&hdmi_in_dai>;
+
+		simple-audio-card,cpu {
+			sound-dai = <&i2s_slave>;
+		};
+
+		hdmi_in_dai: simple-audio-card,codec {
+			sound-dai = <&hdmi_in_audio>;
+		};
+	};
+
 	cpll_24m: clock-24000000 {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
@@ -329,11 +359,31 @@
 			compatible = "axera,ax620e-periph-sys";
 			reg = <0x04870000 0x1000>;
 			clocks = <&rtc_32k>, <&cpll_24m>, <&epll_50m>,
-				 <&cpll_156m>, <&cpll_208m>, <&pclk_top>;
+				 <&cpll_156m>, <&cpll_208m>, <&pclk_top>,
+				 <&hpll_12m288>;
 			clock-names = "rtc_32k", "cpll_24m", "epll_50m",
-				      "cpll_156m", "cpll_208m", "pclk_top";
+				      "cpll_156m", "cpll_208m", "pclk_top",
+				      "hpll_12m288";
 			#clock-cells = <1>;
 			#reset-cells = <1>;
+			/*
+			 * The LT7911EXC's I2S output (it drives the bit and
+			 * frame clocks) into the I2S slave controller, as the
+			 * vendor kernel sets it.
+			 */
+			axera,audio-routing = <0x00180320>;
+		};
+
+		i2s_slave: i2s@6051000 {
+			compatible = "axera,ax620e-i2s";
+			reg = <0x06051000 0x400>;
+			interrupts = <GIC_SPI 145 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_CLK_I2S_REF>,
+				 <&periph_sys AX620E_PERIPH_PCLK_I2S_S>;
+			clock-names = "i2sclk", "apb";
+			resets = <&periph_sys AX620E_PERIPH_RST_I2S_S_APB>,
+				 <&periph_sys AX620E_PERIPH_RST_I2S_S>;
+			#sound-dai-cells = <0>;
 		};
 
 		/*
