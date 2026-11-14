@@ -461,6 +461,11 @@
 				      "cpll_416m", "epll_500m", "npll_533m";
 			#clock-cells = <1>;
 			#reset-cells = <1>;
+			assigned-clocks = <&vpu_sys AX620E_VPU_CLK_JENC_SEL>,
+					  <&vpu_sys AX620E_VPU_CLK_VDEC_SEL>,
+					  <&vpu_sys AX620E_VPU_CLK_GLB_SEL>;
+			assigned-clock-parents = <&npll_533m>, <&npll_533m>,
+						 <&npll_533m>;
 		};
 
 		uart3: serial@6080000 {
