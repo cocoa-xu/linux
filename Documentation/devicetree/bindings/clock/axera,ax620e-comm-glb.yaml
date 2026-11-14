@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/clock/axera,ax620e-comm-glb.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E common system controller
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  Registers shared by several blocks of Axera AX620E SoCs, such as the
+  D-PHY power control, which other drivers reach as a syscon, and the clock
+  gates and resets of the always-on blocks, such as the temperature sensor.
+  Indices are defined in include/dt-bindings/clock/axera,ax620e-comm-glb.h
+  and include/dt-bindings/reset/axera,ax620e-comm-glb.h.
+
+properties:
+  compatible:
+    items:
+      - const: axera,ax620e-comm-glb
+      - const: syscon
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: CPLL 24 MHz output
+      - description: Peripheral APB clock
+
+  clock-names:
+    items:
+      - const: cpll_24m
+      - const: pclk_top
+
+  '#clock-cells':
+    const: 1
+
+  '#reset-cells':
+    const: 1
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - clock-names
+  - '#clock-cells'
+  - '#reset-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+    syscon@2340000 {
+        compatible = "axera,ax620e-comm-glb", "syscon";
+        reg = <0x02340000 0x1000>;
+        clocks = <&cpll_24m>, <&pclk_top>;
+        clock-names = "cpll_24m", "pclk_top";
+        #clock-cells = <1>;
+        #reset-cells = <1>;
+    };

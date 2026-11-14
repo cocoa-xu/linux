@@ -1,0 +1,8 @@
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
+#ifndef _DT_BINDINGS_CLOCK_AXERA_AX620E_COMM_GLB_H
+#define _DT_BINDINGS_CLOCK_AXERA_AX620E_COMM_GLB_H
+
+#define AX620E_COMM_PCLK_THM		0
+#define AX620E_COMM_CLK_THM		1
+
+#endif
