@@ -64,9 +64,17 @@
 #define GLB_EB1_ALL			GENMASK(9, 1)
 #define GLB_RST0_ASSERT			0x0e0
 #define GLB_RST0_DEASSERT		0x0e4
-#define GLB_RST0_CSIRX			(BIT(2) | BIT(3) | BIT(4) | BIT(5) | \
-					 BIT(10) | BIT(11))
+#define GLB_RST0_CSIRX_PIXEL		BIT(2)
+#define GLB_RST0_CSIRX_PPI_BYTE		BIT(3)
+#define GLB_RST0_CSIRX_PRST		BIT(4)
+#define GLB_RST0_CSIRX_SYS		BIT(5)
 #define GLB_RST0_DESKEW			(BIT(10) | BIT(11))
+#define GLB_RST0_CSIRX			(GLB_RST0_CSIRX_PIXEL | \
+					 GLB_RST0_CSIRX_PPI_BYTE | \
+					 GLB_RST0_CSIRX_PRST | \
+					 GLB_RST0_CSIRX_SYS | GLB_RST0_DESKEW)
+/* What the vendor driver pulses to recover from receive errors. */
+#define GLB_RST0_CSIRX_RECOVER		(GLB_RST0_CSIRX & ~GLB_RST0_CSIRX_PRST)
 #define GLB_RST0_DPHYRX			BIT(12)
 #define GLB_RST0_ALL			GENMASK(31, 0)
 /* The vendor driver never pulses bit 27. */
@@ -107,8 +115,20 @@
 
 /* CSI-2 controller */
 #define CSI_RX_SOFT_RST			0x004
-#define CSI_IRQ_CLR0			0x028
-#define CSI_IRQ_CLR1			0x04c
+/* Error interrupts: status (write 1 to clear) and enable */
+#define CSI_ERR_STATUS			0x028
+#define CSI_ERR_EN			0x02c
+#define CSI_ERR_ALL			0x00011ee1
+#define CSI_ERR_FIFO_OVERFLOW		BIT(16)
+#define CSI_ERR_TRUNC_HEADER		BIT(12)
+#define CSI_ERR_TRUNC_PACKET		BIT(11)
+#define CSI_ERR_RECOVER			(CSI_ERR_FIFO_OVERFLOW | \
+					 CSI_ERR_TRUNC_HEADER | \
+					 CSI_ERR_TRUNC_PACKET)
+/* D-PHY errors (start of transmission per lane) */
+#define CSI_PHY_ERR_STATUS		0x04c
+#define CSI_PHY_ERR_EN			0x050
+#define CSI_PHY_ERR_ALL			0x00111100
 #define CSI_STREAM_CTRL			0x100
 #define CSI_STREAM_START		BIT(0)
 #define CSI_STREAM_STOP			BIT(1)
@@ -181,8 +201,8 @@ struct ax_vin_reg {
 
 static const struct ax_vin_reg ax_vin_csi_cfg[] = {
 	{ 0x008, 0x43210410 }, { 0x040, 0x0000001f }, { 0x01c, 0x00000007 },
-	{ 0x024, 0x0000006f }, { 0x02c, 0x00011ee1 }, { 0x050, 0x00111100 },
-	{ 0x10c, 0x00000301 }, { 0x110, 0x00000010 }, { 0x118, 0x00000d1f },
+	{ 0x024, 0x0000006f }, { 0x10c, 0x00000301 }, { 0x110, 0x00000010 },
+	{ 0x118, 0x00000d1f },
 };
 
 /* IFE input settings besides size and data type. */
@@ -219,6 +239,9 @@ struct ax_vin {
 	void __iomem *dphy;
 	struct regmap *comm;
 	int irq;
+	/* CSI-2 receive errors */
+	int csi_irq;
+	unsigned int csi_recoveries;
 
 	struct v4l2_device v4l2_dev;
 	struct v4l2_async_notifier notifier;
@@ -405,8 +428,10 @@ static void ax_vin_mipi_start(struct ax_vin *vin)
 	writel(CSI_STREAM_SOFT_RST | CSI_STREAM_STOP, csi + CSI_STREAM_CTRL);
 	writel(0, csi + CSI_STREAM_CTRL);
 	writel(CSI_STREAM_START, csi + CSI_STREAM_CTRL);
-	writel(0xffffffff, csi + CSI_IRQ_CLR0);
-	writel(0xffffffff, csi + CSI_IRQ_CLR1);
+	writel(0xffffffff, csi + CSI_ERR_STATUS);
+	writel(0xffffffff, csi + CSI_PHY_ERR_STATUS);
+	writel(CSI_ERR_ALL, csi + CSI_ERR_EN);
+	writel(CSI_PHY_ERR_ALL, csi + CSI_PHY_ERR_EN);
 }
 
 static void ax_vin_ife_start(struct ax_vin *vin)
@@ -470,6 +495,12 @@ static void ax_vin_hw_stop(struct ax_vin *vin)
 			dev_warn(vin->dev, "AXI writes still pending (%#x)\n",
 				 status);
 	}
+
+	/* No error recovery from here on: it would turn the lanes back on. */
+	writel(0, vin->csi + CSI_ERR_EN);
+	writel(0, vin->csi + CSI_PHY_ERR_EN);
+	if (vin->csi_irq > 0)
+		synchronize_irq(vin->csi_irq);
 
 	writel(GLB_RST0_DPHYRX, glb + GLB_RST0_ASSERT);
 	writel(GLB_EB0_DPHY_RX_REF | GLB_EB0_CFG_PHY, glb + GLB_EB0_CLR);
@@ -571,6 +602,40 @@ static irqreturn_t ax_vin_irq(int irq, void *data)
 	}
 
 	spin_unlock(&vin->qlock);
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t ax_vin_csi_irq(int irq, void *data)
+{
+	struct ax_vin *vin = data;
+	u32 err = readl(vin->csi + CSI_ERR_STATUS);
+	u32 phy = readl(vin->csi + CSI_PHY_ERR_STATUS);
+
+	if (!err && !phy)
+		return IRQ_NONE;
+	writel(err, vin->csi + CSI_ERR_STATUS);
+	writel(phy, vin->csi + CSI_PHY_ERR_STATUS);
+	if (!phy && !(err & CSI_ERR_RECOVER))
+		return IRQ_HANDLED;
+
+	return IRQ_WAKE_THREAD;
+}
+
+/*
+ * The vendor driver's recovery from a broken packet or lane: restart the
+ * receiver and deskew with the data lanes off, so that it locks on the next
+ * packet start again.
+ */
+static irqreturn_t ax_vin_csi_irq_thread(int irq, void *data)
+{
+	struct ax_vin *vin = data;
+
+	writel(DPHY_LANE_EN_DATA, vin->dphy + DPHY_LANE_EN_CLR);
+	writel(GLB_RST0_CSIRX_RECOVER, vin->glb + GLB_RST0_ASSERT);
+	writel(GLB_RST0_CSIRX_RECOVER, vin->glb + GLB_RST0_DEASSERT);
+	writel(DPHY_LANE_EN_DATA, vin->dphy + DPHY_LANE_EN_SET);
+	WRITE_ONCE(vin->csi_recoveries, vin->csi_recoveries + 1);
 
 	return IRQ_HANDLED;
 }
@@ -1098,6 +1163,15 @@ static int ax_vin_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	vin->csi_irq = platform_get_irq_byname(pdev, "csi");
+	if (vin->csi_irq < 0)
+		return vin->csi_irq;
+	ret = devm_request_threaded_irq(dev, vin->csi_irq, ax_vin_csi_irq,
+					ax_vin_csi_irq_thread, 0,
+					AX_VIN_NAME "-csi", vin);
+	if (ret)
+		return ret;
+
 	vin->fmt.width = AX_VIN_MAX_WIDTH;
 	vin->fmt.height = AX_VIN_MAX_HEIGHT;
 	ax_vin_fill_fmt(&vin->fmt);
@@ -1180,8 +1254,18 @@ static ssize_t mid_frame_stops_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(mid_frame_stops);
 
+static ssize_t csi_recoveries_show(struct device *dev,
+				   struct device_attribute *attr, char *buf)
+{
+	struct ax_vin *vin = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%u\n", READ_ONCE(vin->csi_recoveries));
+}
+static DEVICE_ATTR_RO(csi_recoveries);
+
 static struct attribute *ax_vin_attrs[] = {
 	&dev_attr_mid_frame_stops.attr,
+	&dev_attr_csi_recoveries.attr,
 	NULL
 };
 ATTRIBUTE_GROUPS(ax_vin);
