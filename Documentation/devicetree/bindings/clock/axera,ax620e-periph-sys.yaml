@@ -11,7 +11,8 @@ maintainers:
 
 description:
   Clock gates, source muxes and resets of the low-speed peripherals (GPIO,
-  I2C) on Axera AX620E SoCs. Indices are defined in
+  I2C, I2S) on Axera AX620E SoCs, and the routing of the I2S controllers.
+  Indices are defined in
   include/dt-bindings/clock/axera,ax620e-periph-sys.h and
   include/dt-bindings/reset/axera,ax620e-periph-sys.h.
 
@@ -30,6 +31,7 @@ properties:
       - description: CPLL 156 MHz output
       - description: CPLL 208 MHz output
       - description: Peripheral APB clock
+      - description: HPLL 12.288 MHz output, the audio reference
 
   clock-names:
     items:
@@ -39,12 +41,20 @@ properties:
       - const: cpll_156m
       - const: cpll_208m
       - const: pclk_top
+      - const: hpll_12m288
 
   '#clock-cells':
     const: 1
 
   '#reset-cells':
     const: 1
+
+  axera,audio-routing:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description:
+      Value of the audio routing register, which connects the I2S
+      controllers to pads, to each other and to the internal codec. It
+      depends on how the board is wired.
 
 required:
   - compatible
@@ -62,9 +72,11 @@ examples:
         compatible = "axera,ax620e-periph-sys";
         reg = <0x04870000 0x1000>;
         clocks = <&rtc_32k>, <&cpll_24m>, <&epll_50m>,
-                 <&cpll_156m>, <&cpll_208m>, <&pclk_top>;
+                 <&cpll_156m>, <&cpll_208m>, <&pclk_top>,
+                 <&hpll_12m288>;
         clock-names = "rtc_32k", "cpll_24m", "epll_50m",
-                      "cpll_156m", "cpll_208m", "pclk_top";
+                      "cpll_156m", "cpll_208m", "pclk_top",
+                      "hpll_12m288";
         #clock-cells = <1>;
         #reset-cells = <1>;
     };
