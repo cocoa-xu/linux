@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/clock/axera,ax620e-vpu-sys.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E VPU clock and reset controller
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  Clock source muxes, clock gates and resets of the video codecs (JPEG
+  encoder, H.264/H.265 encoder and decoder) on Axera AX620E SoCs. Clock and
+  reset indices are defined in
+  include/dt-bindings/clock/axera,ax620e-vpu-sys.h and
+  include/dt-bindings/reset/axera,ax620e-vpu-sys.h.
+
+properties:
+  compatible:
+    const: axera,ax620e-vpu-sys
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: CPLL 208 MHz output
+      - description: CPLL 312 MHz output
+      - description: EPLL 375 MHz output
+      - description: CPLL 416 MHz output
+      - description: EPLL 500 MHz output
+      - description: NPLL 533 MHz output
+
+  clock-names:
+    items:
+      - const: cpll_208m
+      - const: cpll_312m
+      - const: epll_375m
+      - const: cpll_416m
+      - const: epll_500m
+      - const: npll_533m
+
+  '#clock-cells':
+    const: 1
+
+  '#reset-cells':
+    const: 1
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - clock-names
+  - '#clock-cells'
+  - '#reset-cells'
+
+additionalProperties: false
+
+examples:
+  - |
+    clock-controller@4030000 {
+        compatible = "axera,ax620e-vpu-sys";
+        reg = <0x04030000 0x1000>;
+        clocks = <&cpll_208m>, <&cpll_312m>, <&epll_375m>,
+                 <&cpll_416m>, <&epll_500m>, <&npll_533m>;
+        clock-names = "cpll_208m", "cpll_312m", "epll_375m",
+                      "cpll_416m", "epll_500m", "npll_533m";
+        #clock-cells = <1>;
+        #reset-cells = <1>;
+    };

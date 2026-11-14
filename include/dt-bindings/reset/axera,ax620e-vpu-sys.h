@@ -1,0 +1,9 @@
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
+#ifndef _DT_BINDINGS_RESET_AXERA_AX620E_VPU_SYS_H
+#define _DT_BINDINGS_RESET_AXERA_AX620E_VPU_SYS_H
+
+#define AX620E_VPU_RST_JENC		0
+#define AX620E_VPU_RST_VDEC		1
+#define AX620E_VPU_RST_VENC		2
+
+#endif

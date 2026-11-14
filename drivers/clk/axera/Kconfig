@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: GPL-2.0-only
+
+config CLK_AX620E_VPU_SYS
+	tristate "Axera AX620E VPU clock and reset controller"
+	depends on ARCH_AXERA || COMPILE_TEST
+	depends on OF
+	default ARCH_AXERA
+	select RESET_CONTROLLER
+	help
+	  Clock gates, source muxes and resets of the video codecs (JPEG
+	  encoder, H.264/H.265 encoder and decoder) on Axera AX620E SoCs.
