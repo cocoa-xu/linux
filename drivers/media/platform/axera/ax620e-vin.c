@@ -23,7 +23,10 @@
 #include <linux/regmap.h>
 #include <linux/spinlock.h>
 
+#include <media/v4l2-async.h>
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-event.h>
 #include <media/v4l2-fh.h>
 #include <media/v4l2-fwnode.h>
 #include <media/v4l2-ioctl.h>
@@ -190,6 +193,9 @@ struct ax_vin {
 	int irq;
 
 	struct v4l2_device v4l2_dev;
+	struct v4l2_async_notifier notifier;
+	/* The CSI-2 transmitter feeding the receiver, once bound. */
+	struct v4l2_subdev *source;
 	struct video_device vdev;
 	struct vb2_queue queue;
 	/* Serializes the ioctls and the vb2 queue. */
@@ -524,11 +530,40 @@ static void ax_vin_buf_queue(struct vb2_buffer *vb)
 	spin_unlock_irqrestore(&vin->qlock, flags);
 }
 
+static int ax_vin_check_source(struct ax_vin *vin)
+{
+	struct v4l2_subdev_format fmt = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+	};
+	int ret;
+
+	if (!vin->source)
+		return 0;
+
+	ret = v4l2_subdev_call_state_active(vin->source, pad, get_fmt, &fmt);
+	if (ret)
+		return ret;
+	if (!fmt.format.width || !fmt.format.height)
+		return -ENOLINK;
+	if (fmt.format.width != vin->fmt.width ||
+	    fmt.format.height != vin->fmt.height)
+		return -EPIPE;
+
+	return 0;
+}
+
 static int ax_vin_start_streaming(struct vb2_queue *q, unsigned int count)
 {
 	struct ax_vin *vin = vb2_get_drv_priv(q);
 	void __iomem *isp = vin->isp;
 	unsigned long flags;
+	int ret;
+
+	ret = ax_vin_check_source(vin);
+	if (ret) {
+		ax_vin_return_buffers(vin, VB2_BUF_STATE_QUEUED);
+		return ret;
+	}
 
 	vin->sequence = 0;
 
@@ -545,6 +580,16 @@ static int ax_vin_start_streaming(struct vb2_queue *q, unsigned int count)
 	writel(ISP_IRQ_SOF, isp + ISP_IRQ_EN(ISP_IRQ_SOF_GROUP));
 	writel(ISP_IRQ_EOF, isp + ISP_IRQ_EN(ISP_IRQ_EOF_GROUP));
 
+	if (vin->source) {
+		ret = v4l2_subdev_call(vin->source, video, s_stream, 1);
+		if (ret && ret != -ENOIOCTLCMD) {
+			ax_vin_hw_stop(vin);
+			synchronize_irq(vin->irq);
+			ax_vin_return_buffers(vin, VB2_BUF_STATE_QUEUED);
+			return ret;
+		}
+	}
+
 	return 0;
 }
 
@@ -552,6 +597,8 @@ static void ax_vin_stop_streaming(struct vb2_queue *q)
 {
 	struct ax_vin *vin = vb2_get_drv_priv(q);
 
+	if (vin->source)
+		v4l2_subdev_call(vin->source, video, s_stream, 0);
 	ax_vin_hw_stop(vin);
 	synchronize_irq(vin->irq);
 	ax_vin_return_buffers(vin, VB2_BUF_STATE_ERROR);
@@ -651,13 +698,99 @@ static int ax_vin_enum_framesizes(struct file *file, void *priv,
 static int ax_vin_enum_input(struct file *file, void *priv,
 			     struct v4l2_input *inp)
 {
+	struct ax_vin *vin = video_drvdata(file);
+	struct v4l2_dv_timings timings;
+
 	if (inp->index)
 		return -EINVAL;
 
 	inp->type = V4L2_INPUT_TYPE_CAMERA;
 	strscpy(inp->name, "MIPI CSI-2", sizeof(inp->name));
+	if (vin->source) {
+		inp->capabilities = V4L2_IN_CAP_DV_TIMINGS;
+		if (v4l2_subdev_call(vin->source, pad, query_dv_timings, 0,
+				     &timings))
+			inp->status = V4L2_IN_ST_NO_SIGNAL;
+	}
 
 	return 0;
+}
+
+static int ax_vin_query_dv_timings(struct file *file, void *priv,
+				   struct v4l2_dv_timings *timings)
+{
+	struct ax_vin *vin = video_drvdata(file);
+
+	if (!vin->source)
+		return -ENOTTY;
+
+	return v4l2_subdev_call(vin->source, pad, query_dv_timings, 0, timings);
+}
+
+static int ax_vin_g_dv_timings(struct file *file, void *priv,
+			       struct v4l2_dv_timings *timings)
+{
+	struct ax_vin *vin = video_drvdata(file);
+
+	if (!vin->source)
+		return -ENOTTY;
+
+	return v4l2_subdev_call(vin->source, pad, g_dv_timings, 0, timings);
+}
+
+static int ax_vin_s_dv_timings(struct file *file, void *priv,
+			       struct v4l2_dv_timings *timings)
+{
+	struct ax_vin *vin = video_drvdata(file);
+	int ret;
+
+	if (!vin->source)
+		return -ENOTTY;
+	if (vb2_is_busy(&vin->queue))
+		return -EBUSY;
+
+	ret = v4l2_subdev_call(vin->source, pad, s_dv_timings, 0, timings);
+	if (ret)
+		return ret;
+
+	vin->fmt.width = timings->bt.width;
+	vin->fmt.height = timings->bt.height;
+	ax_vin_fill_fmt(&vin->fmt);
+
+	return 0;
+}
+
+static int ax_vin_enum_dv_timings(struct file *file, void *priv,
+				  struct v4l2_enum_dv_timings *timings)
+{
+	struct ax_vin *vin = video_drvdata(file);
+
+	if (!vin->source)
+		return -ENOTTY;
+
+	timings->pad = 0;
+	return v4l2_subdev_call(vin->source, pad, enum_dv_timings, timings);
+}
+
+static int ax_vin_dv_timings_cap(struct file *file, void *priv,
+				 struct v4l2_dv_timings_cap *cap)
+{
+	struct ax_vin *vin = video_drvdata(file);
+
+	if (!vin->source)
+		return -ENOTTY;
+
+	cap->pad = 0;
+	return v4l2_subdev_call(vin->source, pad, dv_timings_cap, cap);
+}
+
+static int ax_vin_subscribe_event(struct v4l2_fh *fh,
+				  const struct v4l2_event_subscription *sub)
+{
+	if (sub->type == V4L2_EVENT_SOURCE_CHANGE)
+		return v4l2_src_change_event_subscribe(fh, sub);
+
+	return v4l2_ctrl_subscribe_event(fh, sub);
 }
 
 static int ax_vin_g_input(struct file *file, void *priv, unsigned int *i)
@@ -682,6 +815,11 @@ static const struct v4l2_ioctl_ops ax_vin_ioctl_ops = {
 	.vidioc_enum_input		= ax_vin_enum_input,
 	.vidioc_g_input			= ax_vin_g_input,
 	.vidioc_s_input			= ax_vin_s_input,
+	.vidioc_query_dv_timings	= ax_vin_query_dv_timings,
+	.vidioc_g_dv_timings		= ax_vin_g_dv_timings,
+	.vidioc_s_dv_timings		= ax_vin_s_dv_timings,
+	.vidioc_enum_dv_timings		= ax_vin_enum_dv_timings,
+	.vidioc_dv_timings_cap		= ax_vin_dv_timings_cap,
 
 	.vidioc_reqbufs			= vb2_ioctl_reqbufs,
 	.vidioc_create_bufs		= vb2_ioctl_create_bufs,
@@ -692,6 +830,9 @@ static const struct v4l2_ioctl_ops ax_vin_ioctl_ops = {
 	.vidioc_expbuf			= vb2_ioctl_expbuf,
 	.vidioc_streamon		= vb2_ioctl_streamon,
 	.vidioc_streamoff		= vb2_ioctl_streamoff,
+
+	.vidioc_subscribe_event		= ax_vin_subscribe_event,
+	.vidioc_unsubscribe_event	= v4l2_event_unsubscribe,
 
 };
 
@@ -704,9 +845,56 @@ static const struct v4l2_file_operations ax_vin_fops = {
 	.mmap		= vb2_fop_mmap,
 };
 
-static int ax_vin_parse_endpoint(struct ax_vin *vin)
+static void ax_vin_notify(struct v4l2_subdev *sd, unsigned int notification,
+			  void *arg)
+{
+	struct ax_vin *vin = container_of(sd->v4l2_dev, struct ax_vin,
+					  v4l2_dev);
+
+	if (notification == V4L2_DEVICE_NOTIFY_EVENT)
+		v4l2_event_queue(&vin->vdev, arg);
+}
+
+static int ax_vin_notify_bound(struct v4l2_async_notifier *notifier,
+			       struct v4l2_subdev *sd,
+			       struct v4l2_async_connection *asc)
+{
+	struct ax_vin *vin = container_of(notifier, struct ax_vin, notifier);
+	struct v4l2_subdev_format fmt = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+	};
+
+	vin->source = sd;
+	if (!vb2_is_busy(&vin->queue) &&
+	    !v4l2_subdev_call_state_active(sd, pad, get_fmt, &fmt) &&
+	    fmt.format.width && fmt.format.height) {
+		vin->fmt.width = fmt.format.width;
+		vin->fmt.height = fmt.format.height;
+		ax_vin_fill_fmt(&vin->fmt);
+	}
+	dev_info(vin->dev, "bound %s\n", sd->name);
+
+	return 0;
+}
+
+static void ax_vin_notify_unbind(struct v4l2_async_notifier *notifier,
+				 struct v4l2_subdev *sd,
+				 struct v4l2_async_connection *asc)
+{
+	struct ax_vin *vin = container_of(notifier, struct ax_vin, notifier);
+
+	vin->source = NULL;
+}
+
+static const struct v4l2_async_notifier_operations ax_vin_notify_ops = {
+	.bound = ax_vin_notify_bound,
+	.unbind = ax_vin_notify_unbind,
+};
+
+static int ax_vin_register_source(struct ax_vin *vin)
 {
 	struct v4l2_fwnode_endpoint ep = { .bus_type = V4L2_MBUS_CSI2_DPHY };
+	struct v4l2_async_connection *asc;
 	struct fwnode_handle *fwnode;
 	int ret;
 
@@ -715,14 +903,29 @@ static int ax_vin_parse_endpoint(struct ax_vin *vin)
 		return 0;
 
 	ret = v4l2_fwnode_endpoint_parse(fwnode, &ep);
-	fwnode_handle_put(fwnode);
-	if (ret)
-		return dev_err_probe(vin->dev, ret, "invalid endpoint\n");
-	if (ep.bus.mipi_csi2.num_data_lanes != 4)
-		return dev_err_probe(vin->dev, -EINVAL,
-				     "only 4 data lanes are supported\n");
+	if (!ret && ep.bus.mipi_csi2.num_data_lanes != 4)
+		ret = dev_err_probe(vin->dev, -EINVAL,
+				    "only 4 data lanes are supported\n");
+	if (ret) {
+		fwnode_handle_put(fwnode);
+		return ret;
+	}
 
-	return 0;
+	v4l2_async_nf_init(&vin->notifier, &vin->v4l2_dev);
+	vin->notifier.ops = &ax_vin_notify_ops;
+	asc = v4l2_async_nf_add_fwnode_remote(&vin->notifier, fwnode,
+					      struct v4l2_async_connection);
+	fwnode_handle_put(fwnode);
+	if (IS_ERR(asc)) {
+		v4l2_async_nf_cleanup(&vin->notifier);
+		return PTR_ERR(asc);
+	}
+
+	ret = v4l2_async_nf_register(&vin->notifier);
+	if (ret)
+		v4l2_async_nf_cleanup(&vin->notifier);
+
+	return ret;
 }
 
 static int ax_vin_probe(struct platform_device *pdev)
@@ -759,10 +962,6 @@ static int ax_vin_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, PTR_ERR(vin->comm),
 				     "no COMM_GLB syscon\n");
 
-	ret = ax_vin_parse_endpoint(vin);
-	if (ret)
-		return ret;
-
 	/* The boot firmware or a previous kernel may have left it running. */
 	ax_vin_hw_stop(vin);
 
@@ -777,6 +976,7 @@ static int ax_vin_probe(struct platform_device *pdev)
 	vin->fmt.height = AX_VIN_MAX_HEIGHT;
 	ax_vin_fill_fmt(&vin->fmt);
 
+	vin->v4l2_dev.notify = ax_vin_notify;
 	ret = v4l2_device_register(dev, &vin->v4l2_dev);
 	if (ret)
 		return ret;
@@ -814,10 +1014,17 @@ static int ax_vin_probe(struct platform_device *pdev)
 		goto err_v4l2;
 
 	platform_set_drvdata(pdev, vin);
+
+	ret = ax_vin_register_source(vin);
+	if (ret)
+		goto err_vdev;
+
 	dev_info(dev, "registered %s\n", video_device_node_name(vdev));
 
 	return 0;
 
+err_vdev:
+	vb2_video_unregister_device(vdev);
 err_v4l2:
 	v4l2_device_unregister(&vin->v4l2_dev);
 	return ret;
@@ -827,6 +1034,8 @@ static void ax_vin_remove(struct platform_device *pdev)
 {
 	struct ax_vin *vin = platform_get_drvdata(pdev);
 
+	v4l2_async_nf_unregister(&vin->notifier);
+	v4l2_async_nf_cleanup(&vin->notifier);
 	vb2_video_unregister_device(&vin->vdev);
 	v4l2_device_unregister(&vin->v4l2_dev);
 	mutex_destroy(&vin->lock);
