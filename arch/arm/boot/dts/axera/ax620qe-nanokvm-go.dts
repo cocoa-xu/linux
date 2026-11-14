@@ -456,6 +456,14 @@
 			resets = <&vpu_sys AX620E_VPU_RST_JENC>;
 		};
 
+		video-encoder@4010000 {
+			compatible = "axera,ax620e-venc";
+			reg = <0x04010000 0x10000>;
+			interrupts = <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&vpu_sys AX620E_VPU_CLK_VENC>;
+			resets = <&vpu_sys AX620E_VPU_RST_VENC>;
+		};
+
 		vpu_sys: clock-controller@4030000 {
 			compatible = "axera,ax620e-vpu-sys";
 			reg = <0x04030000 0x1000>;
