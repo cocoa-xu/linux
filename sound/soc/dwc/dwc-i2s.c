@@ -945,6 +945,13 @@ static int dw_i2s_probe(struct platform_device *pdev)
 	}
 
 	if (!dev->is_jh7110) {
+		struct clk *apb;
+
+		/* The registers only answer while the bus clock runs. */
+		apb = devm_clk_get_optional_enabled(&pdev->dev, "apb");
+		if (IS_ERR(apb))
+			return PTR_ERR(apb);
+
 		dev->reset = devm_reset_control_array_get_optional_shared(&pdev->dev);
 		if (IS_ERR(dev->reset))
 			return PTR_ERR(dev->reset);
@@ -995,6 +1002,13 @@ static int dw_i2s_probe(struct platform_device *pdev)
 		}
 		dev->clk = devm_clk_get_enabled(&pdev->dev, clk_id);
 
+		if (IS_ERR(dev->clk)) {
+			ret = PTR_ERR(dev->clk);
+			goto err_assert_reset;
+		}
+	} else if (!pdata) {
+		/* A consumer may still run its logic from the reference clock. */
+		dev->clk = devm_clk_get_optional_enabled(&pdev->dev, clk_id);
 		if (IS_ERR(dev->clk)) {
 			ret = PTR_ERR(dev->clk);
 			goto err_assert_reset;
