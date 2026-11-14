@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0-only OR MIT)
 /*
  * Sipeed NanoKVM-Go (Axera AX620QE, 2x Cortex-A53 in AArch32, 512 MiB LPDDR4
- * in package). Bring-up subset: one CPU, GIC, arch timer, UART3, RAM log.
+ * in package).
  */
 
 /dts-v1/;
@@ -44,6 +44,14 @@
 			reg = <0x55f00000 0x100000>;
 			no-map;
 		};
+
+		/* 4K YUYV frames are 16 MiB each. */
+		linux,cma {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x10000000>;
+			linux,cma-default;
+		};
 	};
 
 	sd_clk: clock-200000000 {
@@ -77,6 +85,44 @@
 			interrupt-controller;
 			#interrupt-cells = <3>;
 			interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(2) | IRQ_TYPE_LEVEL_HIGH)>;
+		};
+
+		comm_glb: syscon@2340000 {
+			compatible = "axera,ax620e-comm-glb", "syscon";
+			reg = <0x02340000 0x1000>;
+		};
+
+		/* MIPI D-PHY RX pads: function 0 is the D-PHY. */
+		pinctrl@2303000 {
+			compatible = "pinctrl-single";
+			reg = <0x02303000 0x94>;
+			#pinctrl-cells = <1>;
+			pinctrl-single,register-width = <32>;
+			pinctrl-single,function-mask = <0x700ff>;
+
+			mipi_rx_pins: mipi-rx-pins {
+				pinctrl-single,pins = <
+					0x0c 0x0 0x18 0x0	/* CDRX_L0N/P */
+					0x24 0x0 0x30 0x0	/* CDRX_L1N/P */
+					0x3c 0x0 0x48 0x0	/* CDRX_L2N/P */
+					0x54 0x0 0x60 0x0	/* CDRX_L3N/P */
+					0x6c 0x0 0x78 0x0	/* CDRX_L4N/P */
+					0x84 0x0 0x90 0x0	/* CDRX_L5N/P */
+				>;
+			};
+		};
+
+		video-capture@2400000 {
+			compatible = "axera,ax620e-vin";
+			reg = <0x02400000 0x100000>,
+			      <0x02500000 0x1000>,
+			      <0x02600000 0x1000>,
+			      <0x023f0000 0x1000>;
+			reg-names = "isp", "glb", "csi", "dphy";
+			interrupts = <GIC_SPI 27 IRQ_TYPE_LEVEL_HIGH>;
+			axera,comm-glb = <&comm_glb>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&mipi_rx_pins>;
 		};
 
 		uart3: serial@6080000 {
