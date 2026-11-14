@@ -479,6 +479,33 @@ static const struct sdhci_ops sdhci_cdns_ops = {
 	.set_uhs_signaling = sdhci_cdns_set_uhs_signaling,
 };
 
+static void ax620e_assert_resets(void *data)
+{
+	reset_control_assert(data);
+}
+
+static int ax620e_drv_init(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct clk_bulk_data *clks;
+	struct reset_control *rst;
+	int ret;
+
+	ret = devm_clk_bulk_get_all_enabled(dev, &clks);
+	if (ret < 0)
+		return dev_err_probe(dev, ret, "failed to enable clocks\n");
+
+	rst = devm_reset_control_array_get_exclusive(dev);
+	if (IS_ERR(rst))
+		return dev_err_probe(dev, PTR_ERR(rst), "failed to get resets\n");
+
+	ret = reset_control_deassert(rst);
+	if (ret)
+		return ret;
+
+	return devm_add_action_or_reset(dev, ax620e_assert_resets, rst);
+}
+
 static const struct sdhci_cdns_drv_data sdhci_cdns_uniphier_drv_data = {
 	.pltfm_data = {
 		.ops = &sdhci_cdns_ops,
@@ -490,6 +517,13 @@ static const struct sdhci_cdns_drv_data sdhci_elba_drv_data = {
 	.init = elba_drv_init,
 	.pltfm_data = {
 		.ops = &sdhci_elba_ops,
+	},
+};
+
+static const struct sdhci_cdns_drv_data sdhci_ax620e_drv_data = {
+	.init = ax620e_drv_init,
+	.pltfm_data = {
+		.ops = &sdhci_cdns_ops,
 	},
 };
 
@@ -641,6 +675,10 @@ disable_clk:
 static DEFINE_SIMPLE_DEV_PM_OPS(sdhci_cdns_pm_ops, sdhci_pltfm_suspend, sdhci_cdns_resume);
 
 static const struct of_device_id sdhci_cdns_match[] = {
+	{
+		.compatible = "axera,ax620e-sd4hc",
+		.data = &sdhci_ax620e_drv_data,
+	},
 	{
 		.compatible = "socionext,uniphier-sd4hc",
 		.data = &sdhci_cdns_uniphier_drv_data,

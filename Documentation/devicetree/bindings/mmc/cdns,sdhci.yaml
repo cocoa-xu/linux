@@ -14,6 +14,7 @@ properties:
     items:
       - enum:
           - amd,pensando-elba-sd4hc
+          - axera,ax620e-sd4hc
           - microchip,mpfs-sd4hc
           - microchip,pic64gx-sd4hc
           - mobileye,eyeq-sd4hc
@@ -28,10 +29,18 @@ properties:
     maxItems: 1
 
   clocks:
-    maxItems: 1
+    minItems: 1
+    items:
+      - description: Card clock
+      - description: AXI bus clock
+      - description: APB clock
 
   resets:
-    maxItems: 1
+    minItems: 1
+    items:
+      - description: Card reset
+      - description: AXI bus reset
+      - description: APB reset
 
   # PHY DLL input delays:
   # They are used to delay the data valid window, and align the window to
@@ -137,6 +146,25 @@ allOf:
     else:
       properties:
         reg:
+          maxItems: 1
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: axera,ax620e-sd4hc
+    then:
+      properties:
+        clocks:
+          minItems: 3
+        resets:
+          minItems: 3
+      required:
+        - resets
+    else:
+      properties:
+        clocks:
+          maxItems: 1
+        resets:
           maxItems: 1
 
 unevaluatedProperties: false
