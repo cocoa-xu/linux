@@ -711,6 +711,9 @@ static const struct v4l2_file_operations hantro_fops = {
 };
 
 static const struct of_device_id of_hantro_match[] = {
+#ifdef CONFIG_VIDEO_HANTRO_AX620E
+	{ .compatible = "axera,ax620e-jenc", .data = &ax620e_jenc_variant, },
+#endif
 #ifdef CONFIG_VIDEO_HANTRO_ROCKCHIP
 	{ .compatible = "rockchip,px30-vpu",   .data = &px30_vpu_variant, },
 	{ .compatible = "rockchip,rk3036-vpu", .data = &rk3036_vpu_variant, },

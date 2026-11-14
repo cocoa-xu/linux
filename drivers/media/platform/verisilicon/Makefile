@@ -21,6 +21,10 @@ hantro-vpu-y += \
 		hantro_vp8.o \
 		hantro_vp9.o
 
+hantro-vpu-$(CONFIG_VIDEO_HANTRO_AX620E) += \
+		axera_vpu_hw.o \
+		hantro_vc8000e_jpeg_enc.o
+
 hantro-vpu-$(CONFIG_VIDEO_HANTRO_IMX8M) += \
 		imx8m_vpu_hw.o
 

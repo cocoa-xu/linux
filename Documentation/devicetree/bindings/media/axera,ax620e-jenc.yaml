@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/axera,ax620e-jenc.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E JPEG encoder
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  VeriSilicon VC8000E encoder core in JPEG-only configuration, with its
+  registers behind a VCMD command parser.
+
+properties:
+  compatible:
+    const: axera,ax620e-jenc
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    maxItems: 1
+
+  resets:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - clocks
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/axera,ax620e-vpu-sys.h>
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+    #include <dt-bindings/reset/axera,ax620e-vpu-sys.h>
+
+    jpeg-encoder@4000000 {
+        compatible = "axera,ax620e-jenc";
+        reg = <0x04000000 0x10000>;
+        interrupts = <GIC_SPI 91 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&vpu_sys AX620E_VPU_CLK_JENC>;
+        resets = <&vpu_sys AX620E_VPU_RST_JENC>;
+    };

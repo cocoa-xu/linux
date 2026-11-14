@@ -402,6 +402,7 @@ enum hantro_enc_fmt {
 	ROCKCHIP_VPU_ENC_FMT_UYVY422 = 3,
 };
 
+extern const struct hantro_variant ax620e_jenc_variant;
 extern const struct hantro_variant imx8mm_vpu_g1_variant;
 extern const struct hantro_variant imx8mq_vpu_g1_variant;
 extern const struct hantro_variant imx8mq_vpu_g2_variant;
@@ -438,6 +439,10 @@ void hantro_g1_reset(struct hantro_ctx *ctx);
 int hantro_h1_jpeg_enc_run(struct hantro_ctx *ctx);
 int rockchip_vpu2_jpeg_enc_run(struct hantro_ctx *ctx);
 void hantro_h1_jpeg_enc_done(struct hantro_ctx *ctx);
+int hantro_vc8000e_jpeg_enc_run(struct hantro_ctx *ctx);
+void hantro_vc8000e_jpeg_enc_done(struct hantro_ctx *ctx);
+irqreturn_t hantro_vc8000e_irq(int irq, void *dev_id);
+void hantro_vc8000e_reset(struct hantro_ctx *ctx);
 void rockchip_vpu2_jpeg_enc_done(struct hantro_ctx *ctx);
 
 dma_addr_t hantro_h264_get_ref_buf(struct hantro_ctx *ctx,
