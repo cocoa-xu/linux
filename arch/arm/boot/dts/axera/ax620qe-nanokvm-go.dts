@@ -154,6 +154,18 @@
 		clock-frequency = <200000000>;
 	};
 
+	/* AIC8800D80 Wi-Fi/BT: GPIO1 line 28 powers it up when high. */
+	wifi_pwrseq: wifi-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio1 28 GPIO_ACTIVE_LOW>;
+		post-power-on-delay-ms = <50>;
+	};
+
+	/* Node the out-of-tree AIC8800 driver looks for; power is mmc-pwrseq. */
+	wifi-bsp {
+		compatible = "aicsemi,aic_bsp";
+	};
+
 	timer {
 		compatible = "arm,armv7-timer";
 		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(2) | IRQ_TYPE_LEVEL_HIGH)>,
@@ -394,6 +406,32 @@
 			broken-cd;
 			sdhci-caps-mask = <0x7 0x200000>;
 			cdns,phy-input-delay-sd-highspeed = <2>;
+			cdns,phy-input-delay-legacy = <3>;
+			cdns,phy-input-delay-sd-uhs-sdr12 = <3>;
+			cdns,phy-input-delay-sd-uhs-sdr25 = <2>;
+			cdns,phy-input-delay-sd-uhs-sdr50 = <1>;
+			cdns,phy-input-delay-sd-uhs-ddr50 = <1>;
+			cdns,phy-dll-delay-sdclk = <0>;
+		};
+
+		mmc@104d0000 {
+			compatible = "cdns,sd4hc";
+			reg = <0x104d0000 0x10000>;
+			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&sd_clk>;
+			mmc-pwrseq = <&wifi_pwrseq>;
+			bus-width = <4>;
+			max-frequency = <50000000>;
+			cap-sd-highspeed;
+			cap-sdio-irq;
+			keep-power-in-suspend;
+			non-removable;
+			no-1-8-v;
+			no-sd;
+			no-mmc;
+			disable-wp;
+			sdhci-caps-mask = <0x7 0x200000>;
+			cdns,phy-input-delay-sd-highspeed = <4>;
 			cdns,phy-input-delay-legacy = <3>;
 			cdns,phy-input-delay-sd-uhs-sdr12 = <3>;
 			cdns,phy-input-delay-sd-uhs-sdr25 = <2>;
