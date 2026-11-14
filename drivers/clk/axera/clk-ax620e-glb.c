@@ -77,6 +77,8 @@ struct ax620e_glb_data {
 	const struct ax620e_glb_reset *resets;
 	unsigned int num_resets;
 	unsigned int num_clks;
+	/* Offset of the I2S routing register, 0 for none. */
+	u16 audio_routing;
 };
 
 struct ax620e_glb {
@@ -280,6 +282,7 @@ static int ax620e_glb_probe(struct platform_device *pdev)
 	struct ax620e_glb *glb;
 	unsigned int i, j;
 	struct clk_hw *hw;
+	u32 routing;
 	int ret;
 
 	data = device_get_match_data(dev);
@@ -291,6 +294,10 @@ static int ax620e_glb_probe(struct platform_device *pdev)
 	glb->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(glb->base))
 		return PTR_ERR(glb->base);
+
+	if (data->audio_routing &&
+	    !device_property_read_u32(dev, "axera,audio-routing", &routing))
+		writel(routing, glb->base + data->audio_routing);
 
 	clk_data = devm_kzalloc(dev, struct_size(clk_data, hws, data->num_clks),
 				GFP_KERNEL);
@@ -476,6 +483,8 @@ static const struct ax620e_glb_gate periph_gates[] = {
 	PERIPH_GATE(AX620E_PERIPH_CLK_WDT2, "wdt2", AX620E_PERIPH_CLK_WDT2_SEL, 0x4, 15),
 	PERIPH_GATE(AX620E_PERIPH_PCLK_WDT0, "pclk_wdt0", AX_GLB_NO_PARENT, 0x10, 19),
 	PERIPH_GATE(AX620E_PERIPH_PCLK_WDT2, "pclk_wdt2", AX_GLB_NO_PARENT, 0x10, 20),
+	{ AX620E_PERIPH_CLK_I2S_REF, "i2s_ref", AX_GLB_NO_PARENT, "hpll_12m288", 0x4, 3 },
+	PERIPH_GATE(AX620E_PERIPH_PCLK_I2S_S, "pclk_i2s_s", AX_GLB_NO_PARENT, 0xc, 28),
 };
 
 /* Each block has an APB reset and a core reset; they are used together. */
@@ -492,6 +501,8 @@ static const struct ax620e_glb_reset periph_resets[] = {
 	[AX620E_PERIPH_RST_I2C5] = { 0x18, BIT(28) | BIT(29) },
 	[AX620E_PERIPH_RST_WDT0] = { 0x24, BIT(0) | BIT(1) },
 	[AX620E_PERIPH_RST_WDT2] = { 0x24, BIT(2) | BIT(3) },
+	[AX620E_PERIPH_RST_I2S_S_APB] = { 0x1c, BIT(8) },
+	[AX620E_PERIPH_RST_I2S_S] = { 0x1c, BIT(9) },
 };
 
 static const struct ax620e_glb_data ax620e_periph_sys_data = {
@@ -504,7 +515,8 @@ static const struct ax620e_glb_data ax620e_periph_sys_data = {
 	.num_gates = ARRAY_SIZE(periph_gates),
 	.resets = periph_resets,
 	.num_resets = ARRAY_SIZE(periph_resets),
-	.num_clks = AX620E_PERIPH_PCLK_WDT2 + 1,
+	.num_clks = AX620E_PERIPH_PCLK_I2S_S + 1,
+	.audio_routing = 0x3c,
 };
 
 static const char * const flash_bus_parents[] = {
