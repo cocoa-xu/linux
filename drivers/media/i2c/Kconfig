@@ -1301,6 +1301,20 @@ config VIDEO_ISL7998X
 	  Support for Intersil ISL7998x analog to MIPI-CSI2 or
 	  BT.656 decoder.
 
+config VIDEO_LT7911EXC
+	tristate "Lontium LT7911EXC USB-C/DP to MIPI CSI-2 bridge"
+	depends on OF && VIDEO_DEV && I2C
+	select V4L2_FWNODE
+	select V4L2_CCI_I2C
+	select MEDIA_CONTROLLER
+	select VIDEO_V4L2_SUBDEV_API
+	help
+	  This is a Video4Linux2 driver for the Lontium LT7911EXC
+	  USB Type-C/DisplayPort to MIPI CSI-2 bridge.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called lt7911exc.
+
 config VIDEO_LT6911UXE
 	tristate "Lontium LT6911UXE decoder"
 	depends on ACPI && VIDEO_DEV && I2C
