@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Axera AX620E clock and reset controllers (FLASH_SYS, VPU_SYS, PERIPH_SYS)
+ * Axera AX620E clock and reset controllers (COMM_GLB, FLASH_SYS, VPU_SYS,
+ * PERIPH_SYS)
  *
  * Each subsystem has a "GLB" register block. Every state register R has a
  * SET and a CLR alias: writing a 1 there sets or clears that bit, so gates,
  * resets and mux fields can be changed without a read-modify-write. VPU_SYS
  * and PERIPH_SYS place them at set_base + 2 * R and set_base + 2 * R + 4,
- * FLASH_SYS at 0x4000 + R and 0x8000 + R.
+ * FLASH_SYS at 0x4000 + R and 0x8000 + R, COMM_GLB right after R.
  */
 
 #include <linux/clk-provider.h>
@@ -18,9 +19,11 @@
 #include <linux/property.h>
 #include <linux/reset-controller.h>
 
+#include <dt-bindings/clock/axera,ax620e-comm-glb.h>
 #include <dt-bindings/clock/axera,ax620e-flash-sys.h>
 #include <dt-bindings/clock/axera,ax620e-periph-sys.h>
 #include <dt-bindings/clock/axera,ax620e-vpu-sys.h>
+#include <dt-bindings/reset/axera,ax620e-comm-glb.h>
 #include <dt-bindings/reset/axera,ax620e-flash-sys.h>
 #include <dt-bindings/reset/axera,ax620e-periph-sys.h>
 #include <dt-bindings/reset/axera,ax620e-vpu-sys.h>
@@ -578,7 +581,33 @@ static const struct ax620e_glb_data ax620e_flash_sys_data = {
 	.num_clks = AX620E_FLASH_PCLK_SDIO + 1,
 };
 
+/*
+ * COMM_GLB is also a syscon for the D-PHY power control of the video input;
+ * the clocks and resets here are the ones no other driver writes.
+ */
+static const struct ax620e_glb_gate comm_gates[] = {
+	{ AX620E_COMM_PCLK_THM, "comm_pclk_thm", AX_GLB_NO_PARENT, "pclk_top", 0x30, 10 },
+	{ AX620E_COMM_CLK_THM, "comm_clk_thm", AX_GLB_NO_PARENT, "cpll_24m", 0x30, 14 },
+};
+
+static const struct ax620e_glb_reset comm_resets[] = {
+	[AX620E_COMM_RST_THM_APB] = { 0x54, BIT(19) },
+	[AX620E_COMM_RST_THM] = { 0x54, BIT(20) },
+};
+
+static const struct ax620e_glb_data ax620e_comm_glb_data = {
+	.set_base = 0x4,
+	.set_stride = 1,
+	.clr_offset = 4,
+	.gates = comm_gates,
+	.num_gates = ARRAY_SIZE(comm_gates),
+	.resets = comm_resets,
+	.num_resets = ARRAY_SIZE(comm_resets),
+	.num_clks = AX620E_COMM_CLK_THM + 1,
+};
+
 static const struct of_device_id ax620e_glb_of_match[] = {
+	{ .compatible = "axera,ax620e-comm-glb", .data = &ax620e_comm_glb_data },
 	{ .compatible = "axera,ax620e-flash-sys", .data = &ax620e_flash_sys_data },
 	{ .compatible = "axera,ax620e-periph-sys", .data = &ax620e_periph_sys_data },
 	{ .compatible = "axera,ax620e-vpu-sys", .data = &ax620e_vpu_sys_data },
