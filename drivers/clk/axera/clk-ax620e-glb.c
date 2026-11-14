@@ -335,6 +335,7 @@ static const struct ax620e_glb_data ax620e_vpu_sys_data = {
 	.num_clks = AX620E_VPU_CLK_VENC + 1,
 };
 
+/* GPIO debounce and watchdog sources. */
 static const char * const periph_gpio_parents[] = { "rtc_32k", "cpll_24m" };
 static const char * const periph_i2c_parents[] = {
 	"cpll_24m", "epll_50m", "cpll_156m", "cpll_208m",
@@ -343,6 +344,8 @@ static const char * const periph_i2c_parents[] = {
 static const struct ax620e_glb_mux periph_muxes[] = {
 	{ AX620E_PERIPH_CLK_GPIO_SEL, "periph_gpio_sel", periph_gpio_parents, 2, 0x0, 2, 1 },
 	{ AX620E_PERIPH_CLK_I2C_SEL, "periph_i2c_sel", periph_i2c_parents, 4, 0x0, 3, 2 },
+	{ AX620E_PERIPH_CLK_WDT0_SEL, "periph_wdt0_sel", periph_gpio_parents, 2, 0x0, 19, 1 },
+	{ AX620E_PERIPH_CLK_WDT2_SEL, "periph_wdt2_sel", periph_gpio_parents, 2, 0x0, 20, 1 },
 };
 
 #define PERIPH_GATE(_id, _name, _parent, _reg, _bit) \
@@ -373,6 +376,10 @@ static const struct ax620e_glb_gate periph_gates[] = {
 	PERIPH_GATE(AX620E_PERIPH_PCLK_I2C5, "pclk_i2c5", AX_GLB_NO_PARENT, 0xc, 22),
 	PERIPH_GATE(AX620E_PERIPH_PCLK_I2C6, "pclk_i2c6", AX_GLB_NO_PARENT, 0xc, 23),
 	PERIPH_GATE(AX620E_PERIPH_PCLK_I2C7, "pclk_i2c7", AX_GLB_NO_PARENT, 0xc, 24),
+	PERIPH_GATE(AX620E_PERIPH_CLK_WDT0, "wdt0", AX620E_PERIPH_CLK_WDT0_SEL, 0x4, 14),
+	PERIPH_GATE(AX620E_PERIPH_CLK_WDT2, "wdt2", AX620E_PERIPH_CLK_WDT2_SEL, 0x4, 15),
+	PERIPH_GATE(AX620E_PERIPH_PCLK_WDT0, "pclk_wdt0", AX_GLB_NO_PARENT, 0x10, 19),
+	PERIPH_GATE(AX620E_PERIPH_PCLK_WDT2, "pclk_wdt2", AX_GLB_NO_PARENT, 0x10, 20),
 };
 
 /* Each block has an APB reset and a core reset; they are used together. */
@@ -387,6 +394,8 @@ static const struct ax620e_glb_reset periph_resets[] = {
 	[AX620E_PERIPH_RST_I2C3] = { 0x18, BIT(24) | BIT(25) },
 	[AX620E_PERIPH_RST_I2C4] = { 0x18, BIT(26) | BIT(27) },
 	[AX620E_PERIPH_RST_I2C5] = { 0x18, BIT(28) | BIT(29) },
+	[AX620E_PERIPH_RST_WDT0] = { 0x24, BIT(0) | BIT(1) },
+	[AX620E_PERIPH_RST_WDT2] = { 0x24, BIT(2) | BIT(3) },
 };
 
 static const struct ax620e_glb_data ax620e_periph_sys_data = {
@@ -397,7 +406,7 @@ static const struct ax620e_glb_data ax620e_periph_sys_data = {
 	.num_gates = ARRAY_SIZE(periph_gates),
 	.resets = periph_resets,
 	.num_resets = ARRAY_SIZE(periph_resets),
-	.num_clks = AX620E_PERIPH_PCLK_I2C7 + 1,
+	.num_clks = AX620E_PERIPH_PCLK_WDT2 + 1,
 };
 
 static const struct of_device_id ax620e_glb_of_match[] = {
