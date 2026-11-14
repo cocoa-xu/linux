@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Hantro VPU codec driver: Axera AX620E JPEG encoder
+ * Hantro VPU codec driver: Axera AX620E JPEG and H.264 encoders
  *
- * A VeriSilicon VC8000E core in JPEG-only configuration. Its registers sit
- * behind a VCMD command parser at +0x1000 and are also directly writable,
- * which is how this driver uses it.
+ * Two VeriSilicon VC8000E cores, one in JPEG-only configuration (JENC) and
+ * one for H.264 and HEVC (VENC). Their registers sit behind a VCMD command
+ * parser at +0x1000 and are also directly writable, which is how this
+ * driver uses them.
  */
 
 #include "hantro.h"
@@ -61,4 +62,65 @@ const struct hantro_variant ax620e_jenc_variant = {
 	.num_irqs = ARRAY_SIZE(ax620e_jenc_irqs),
 	.clk_names = ax620e_jenc_clk_names,
 	.num_clocks = ARRAY_SIZE(ax620e_jenc_clk_names),
+};
+
+#define AX620E_VENC_FRMSIZE {			\
+	.min_width = FMT_MIN_WIDTH,		\
+	.max_width = FMT_4K_WIDTH,		\
+	.step_width = MB_DIM,			\
+	.min_height = FMT_MIN_HEIGHT,		\
+	.max_height = FMT_4K_HEIGHT,		\
+	.step_height = MB_DIM,			\
+}
+
+static const struct hantro_fmt ax620e_venc_fmts[] = {
+	{
+		.fourcc = V4L2_PIX_FMT_YUYV,
+		.codec_mode = HANTRO_MODE_NONE,
+		.enc_fmt = ROCKCHIP_VPU_ENC_FMT_YUYV422,
+		.frmsize = AX620E_VENC_FRMSIZE,
+	}, {
+		.fourcc = V4L2_PIX_FMT_UYVY,
+		.codec_mode = HANTRO_MODE_NONE,
+		.enc_fmt = ROCKCHIP_VPU_ENC_FMT_UYVY422,
+		.frmsize = AX620E_VENC_FRMSIZE,
+	}, {
+		.fourcc = V4L2_PIX_FMT_NV12,
+		.codec_mode = HANTRO_MODE_NONE,
+		.enc_fmt = ROCKCHIP_VPU_ENC_FMT_YUV420SP,
+		.frmsize = AX620E_VENC_FRMSIZE,
+	}, {
+		.fourcc = V4L2_PIX_FMT_H264_SLICE,
+		.codec_mode = HANTRO_MODE_H264_ENC,
+		.max_depth = 2,
+		.frmsize = AX620E_VENC_FRMSIZE,
+	},
+};
+
+static const struct hantro_codec_ops ax620e_venc_codec_ops[] = {
+	[HANTRO_MODE_H264_ENC] = {
+		.run = hantro_vc8000e_h264_enc_run,
+		.reset = hantro_vc8000e_reset,
+		.done = hantro_vc8000e_h264_enc_done,
+		.init = hantro_vc8000e_h264_enc_init,
+		.exit = hantro_vc8000e_h264_enc_exit,
+	},
+};
+
+static const struct hantro_irq ax620e_venc_irqs[] = {
+	{ "venc", hantro_vc8000e_irq },
+};
+
+static const char * const ax620e_venc_clk_names[] = { "venc" };
+
+const struct hantro_variant ax620e_venc_variant = {
+	.enc_offset = 0x1000,
+	.enc_fmts = ax620e_venc_fmts,
+	.num_enc_fmts = ARRAY_SIZE(ax620e_venc_fmts),
+	.codec = HANTRO_H264_ENCODER,
+	.codec_ops = ax620e_venc_codec_ops,
+	.irqs = ax620e_venc_irqs,
+	.num_irqs = ARRAY_SIZE(ax620e_venc_irqs),
+	.clk_names = ax620e_venc_clk_names,
+	.num_clocks = ARRAY_SIZE(ax620e_venc_clk_names),
 };

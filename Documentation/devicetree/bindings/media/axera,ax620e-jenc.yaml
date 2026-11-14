@@ -4,18 +4,20 @@
 $id: http://devicetree.org/schemas/media/axera,ax620e-jenc.yaml#
 $schema: http://devicetree.org/meta-schemas/core.yaml#
 
-title: Axera AX620E JPEG encoder
+title: Axera AX620E JPEG and video encoders
 
 maintainers:
   - Cocoa <i@uwucocoa.moe>
 
 description:
-  VeriSilicon VC8000E encoder core in JPEG-only configuration, with its
-  registers behind a VCMD command parser.
+  VeriSilicon VC8000E encoder cores, one in JPEG-only configuration and one
+  for H.264 and HEVC, each with its registers behind a VCMD command parser.
 
 properties:
   compatible:
-    const: axera,ax620e-jenc
+    enum:
+      - axera,ax620e-jenc
+      - axera,ax620e-venc
 
   reg:
     maxItems: 1

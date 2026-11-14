@@ -31,12 +31,12 @@ config VIDEO_HANTRO_HEVC_RFC
 	  It will use more memory but save bandwidth on memory bus.
 
 config VIDEO_HANTRO_AX620E
-	bool "Hantro VC8000E JPEG encoder on Axera AX620E"
+	bool "Hantro VC8000E JPEG and H.264 encoders on Axera AX620E"
 	depends on VIDEO_HANTRO
 	depends on ARCH_AXERA || COMPILE_TEST
 	default y
 	help
-	  Enable support for the JPEG encoder of Axera AX620E SoCs.
+	  Enable support for the JPEG and H.264 encoders of Axera AX620E SoCs.
 
 config VIDEO_HANTRO_IMX8M
 	bool "Hantro VPU i.MX8M support"
