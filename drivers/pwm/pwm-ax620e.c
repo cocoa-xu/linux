@@ -11,7 +11,8 @@
  * - A new setting stops the timer and starts it again, so the period in
  *   progress is cut short.
  * - After the timer starts, a period begins with its low part.
- * - A disabled channel drives its output low.
+ * - The level a disabled channel drives is not known; at 0% and 100% the
+ *   timer holds its output and stops counting.
  */
 
 #include <linux/clk.h>
