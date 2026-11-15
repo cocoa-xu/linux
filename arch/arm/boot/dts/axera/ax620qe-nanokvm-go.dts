@@ -243,10 +243,16 @@
 		};
 	};
 
-	/* On while the panel shows something; the pad is a GPIO (UART1_TXD). */
+	/*
+	 * PWM1 channel 2 at stock's 2.16 kHz. Levels 0 to 100 follow CIE
+	 * lightness: each step looks as much brighter as the one before.
+	 */
 	backlight: backlight {
-		compatible = "gpio-backlight";
-		gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>;
+		compatible = "pwm-backlight";
+		pwms = <&pwm1 2 462963 0>;
+		brightness-levels = <0 12 31 64 115 188 288 417 580 781 1023>;
+		num-interpolated-steps = <10>;
+		default-brightness-level = <100>;
 	};
 
 	thermal-zones {
@@ -481,6 +487,23 @@
 		 * RGMII_TXD0 (function 4), as the first boot stage leaves them;
 		 * chip select, data/command and reset are GPIOs.
 		 */
+		pwm1: pwm@6061000 {
+			compatible = "axera,ax620e-pwm";
+			reg = <0x06061000 0x400>;
+			clocks = <&periph_sys AX620E_PERIPH_PCLK_PWM1>,
+				 <&periph_sys AX620E_PERIPH_CLK_PWM10>,
+				 <&periph_sys AX620E_PERIPH_CLK_PWM11>,
+				 <&periph_sys AX620E_PERIPH_CLK_PWM12>,
+				 <&periph_sys AX620E_PERIPH_CLK_PWM13>;
+			clock-names = "pclk", "ch0", "ch1", "ch2", "ch3";
+			assigned-clocks = <&periph_sys AX620E_PERIPH_CLK_TIMER_SEL>;
+			assigned-clock-parents = <&cpll_24m>;
+			resets = <&periph_sys AX620E_PERIPH_RST_PWM1>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&pwm06_pins>;
+			#pwm-cells = <3>;
+		};
+
 		spi@6072000 {
 			compatible = "snps,dw-apb-ssi";
 			reg = <0x06072000 0x400>;
@@ -561,6 +584,12 @@
 			#pinctrl-cells = <1>;
 			pinctrl-single,register-width = <32>;
 			pinctrl-single,function-mask = <0x700ff>;
+
+			pwm06_pins: pwm06-pins {
+				pinctrl-single,pins = <
+					0x54 0x30003	/* UART1_TXD: PWM06 */
+				>;
+			};
 
 			i2c0_pins: i2c0-pins {
 				pinctrl-single,pins = <
