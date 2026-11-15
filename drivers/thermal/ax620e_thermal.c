@@ -6,6 +6,9 @@
  * converts the enabled channels in turn into 10-bit codes, and measures its
  * own reference, which scales the sensor code. The SPL leaves a reference
  * trim from the eFuses in IRAM.
+ *
+ * Above its alarm threshold the monitor resets the chip, which makes it the
+ * last line of the thermal protection.
  */
 
 #include <linux/clk.h>
@@ -41,16 +44,38 @@
 #define  THM_MON_CH_VREF	BIT(14)
 #define THM_MON_EN		0xc8
 #define THM_MON_INTERVAL	0xcc
+#define THM_TEMP_HIGH		0xd0
+#define THM_TEMP_MEDIAN		0xd4
+#define THM_TEMP_LOW		0xd8
 #define THM_INT_MASK		0x104
 
 /* Without a trim in the eFuses, as the vendor driver does. */
 #define THM_VREF_TRIM_DEFAULT	7
-/* A typical reference code, for a conversion that has not run yet. */
+/* Reference codes seen on the NanoKVM-Go are 0x1f9..0x207. */
 #define THM_VREF_TYPICAL	0x1f1
+#define THM_VREF_MIN		0x100
+/* The vendor's critical temperature, for the chip reset. */
+#define THM_ALARM_MC		120000
+/* The vendor reads 4.5 K low, besides the 273.15 K. */
+#define THM_OFFSET_MC		(273150 + 4500)
 
 struct ax620e_thermal {
 	void __iomem *base;
+	/* Average of the reference code, times 8. */
+	u32 vref8;
 };
+
+static bool ax620e_thermal_vref_valid(u32 vref)
+{
+	return vref >= THM_VREF_MIN && vref <= THM_DATA_CODE;
+}
+
+/* The code is 242 * vref / 90000 per kelvin. */
+static u32 ax620e_thermal_code(int millicelsius, u32 vref)
+{
+	return div_u64((u64)(millicelsius + THM_OFFSET_MC) * 242 * vref,
+		       90000000);
+}
 
 static void ax620e_thermal_set_bits(struct ax620e_thermal *thm, u32 reg,
 				    u32 bits)
@@ -61,6 +86,8 @@ static void ax620e_thermal_set_bits(struct ax620e_thermal *thm, u32 reg,
 /* The vendor's sequence: the monitor converts the ADC channels as well. */
 static void ax620e_thermal_start(struct ax620e_thermal *thm, u32 trim)
 {
+	u32 vref, alarm;
+
 	writel(0, thm->base + THM_RSTN);
 	writel(0, thm->base + THM_MON_EN);
 
@@ -82,6 +109,20 @@ static void ax620e_thermal_start(struct ax620e_thermal *thm, u32 trim)
 	writel(THM_MSR_ONE_VREF, thm->base + THM_MSR_ONE_EN);
 	usleep_range(100, 200);
 
+	vref = readl(thm->base + THM_MSR_VREF) & THM_DATA_CODE;
+	if (!ax620e_thermal_vref_valid(vref))
+		vref = THM_VREF_TYPICAL;
+	thm->vref8 = vref * 8;
+
+	/*
+	 * The thresholds reset to 0, at which the monitor resets the chip as
+	 * soon as it converts the sensor: set them before it runs.
+	 */
+	alarm = ax620e_thermal_code(THM_ALARM_MC, vref);
+	writel(alarm, thm->base + THM_TEMP_LOW);
+	writel(alarm, thm->base + THM_TEMP_MEDIAN);
+	writel(alarm, thm->base + THM_TEMP_HIGH);
+
 	ax620e_thermal_set_bits(thm, THM_MON_CH, THM_MON_CH_VREF);
 	writel(1, thm->base + THM_MON_EN);
 }
@@ -90,10 +131,14 @@ static int ax620e_thermal_get_temp(struct thermal_zone_device *tz, int *temp)
 {
 	struct ax620e_thermal *thm = thermal_zone_device_priv(tz);
 	u32 code = readl(thm->base + THM_DATA0) & THM_DATA_CODE;
-	u32 vref = readl(thm->base + THM_MSR_VREF) ?: THM_VREF_TYPICAL;
+	u32 vref = readl(thm->base + THM_MSR_VREF) & THM_DATA_CODE;
 
-	/* 90000 * code / (242 * vref) kelvin, less the vendor's 4.5 K offset. */
-	*temp = (int)div_u64(90000000ULL * code, 242 * vref) - 273150 - 4500;
+	/* The reference is a few codes noisy, a few degrees each: average. */
+	if (ax620e_thermal_vref_valid(vref))
+		thm->vref8 += vref - thm->vref8 / 8;
+
+	*temp = (int)div_u64(90000000ULL * 8 * code, 242 * thm->vref8) -
+		THM_OFFSET_MC;
 
 	return 0;
 }
