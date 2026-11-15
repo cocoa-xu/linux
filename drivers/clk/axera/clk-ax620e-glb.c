@@ -458,6 +458,7 @@ static const struct ax620e_glb_mux periph_muxes[] = {
 	{ AX620E_PERIPH_CLK_I2C_SEL, "periph_i2c_sel", periph_i2c_parents, 4, 0x0, 3, 2 },
 	{ AX620E_PERIPH_CLK_WDT0_SEL, "periph_wdt0_sel", periph_gpio_parents, 2, 0x0, 19, 1 },
 	{ AX620E_PERIPH_CLK_WDT2_SEL, "periph_wdt2_sel", periph_gpio_parents, 2, 0x0, 20, 1 },
+	{ AX620E_PERIPH_CLK_TIMER_SEL, "periph_timer_sel", periph_gpio_parents, 2, 0x0, 13, 1 },
 };
 
 #define PERIPH_GATE(_id, _name, _parent, _reg, _bit) \
@@ -499,6 +500,23 @@ static const struct ax620e_glb_gate periph_gates[] = {
 	/* The first boot stage sets the SPI master mux ([12:11]) to cpll_208m. */
 	{ AX620E_PERIPH_CLK_SPI2, "spi2", AX_GLB_NO_PARENT, "cpll_208m", 0x4, 8 },
 	PERIPH_GATE(AX620E_PERIPH_PCLK_SPI2, "pclk_spi2", AX_GLB_NO_PARENT, 0x10, 4),
+	/* The DesignWare timers of the PWM blocks; each channel has a gate. */
+	PERIPH_GATE(AX620E_PERIPH_CLK_TIMER, "periph_timer", AX620E_PERIPH_CLK_TIMER_SEL, 0x4, 9),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM00, "pwm00", AX620E_PERIPH_CLK_TIMER, 0x8, 19),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM01, "pwm01", AX620E_PERIPH_CLK_TIMER, 0x8, 20),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM02, "pwm02", AX620E_PERIPH_CLK_TIMER, 0x8, 21),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM03, "pwm03", AX620E_PERIPH_CLK_TIMER, 0x8, 22),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM10, "pwm10", AX620E_PERIPH_CLK_TIMER, 0x8, 23),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM11, "pwm11", AX620E_PERIPH_CLK_TIMER, 0x8, 24),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM12, "pwm12", AX620E_PERIPH_CLK_TIMER, 0x8, 25),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM13, "pwm13", AX620E_PERIPH_CLK_TIMER, 0x8, 26),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM20, "pwm20", AX620E_PERIPH_CLK_TIMER, 0x8, 27),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM21, "pwm21", AX620E_PERIPH_CLK_TIMER, 0x8, 28),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM22, "pwm22", AX620E_PERIPH_CLK_TIMER, 0x8, 29),
+	PERIPH_GATE(AX620E_PERIPH_CLK_PWM23, "pwm23", AX620E_PERIPH_CLK_TIMER, 0x8, 30),
+	PERIPH_GATE(AX620E_PERIPH_PCLK_PWM0, "pclk_pwm0", AX_GLB_NO_PARENT, 0xc, 31),
+	PERIPH_GATE(AX620E_PERIPH_PCLK_PWM1, "pclk_pwm1", AX_GLB_NO_PARENT, 0x10, 0),
+	PERIPH_GATE(AX620E_PERIPH_PCLK_PWM2, "pclk_pwm2", AX_GLB_NO_PARENT, 0x10, 1),
 };
 
 /* Each block has an APB reset and a core reset; they are used together. */
@@ -520,6 +538,10 @@ static const struct ax620e_glb_reset periph_resets[] = {
 	[AX620E_PERIPH_RST_DMA_AXI] = { 0x18, BIT(1) },
 	[AX620E_PERIPH_RST_DMA_APB] = { 0x18, BIT(2) },
 	[AX620E_PERIPH_RST_SPI2] = { 0x20, BIT(2) | BIT(3) },
+	/* The block's reset and those of its four channels. */
+	[AX620E_PERIPH_RST_PWM0] = { 0x1c, GENMASK(19, 15) },
+	[AX620E_PERIPH_RST_PWM1] = { 0x1c, GENMASK(24, 20) },
+	[AX620E_PERIPH_RST_PWM2] = { 0x1c, GENMASK(29, 25) },
 };
 
 static const struct ax620e_glb_data ax620e_periph_sys_data = {
@@ -532,7 +554,7 @@ static const struct ax620e_glb_data ax620e_periph_sys_data = {
 	.num_gates = ARRAY_SIZE(periph_gates),
 	.resets = periph_resets,
 	.num_resets = ARRAY_SIZE(periph_resets),
-	.num_clks = AX620E_PERIPH_PCLK_SPI2 + 1,
+	.num_clks = AX620E_PERIPH_PCLK_PWM2 + 1,
 	.audio_routing = 0x3c,
 };
 
