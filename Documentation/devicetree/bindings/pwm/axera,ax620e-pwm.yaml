@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/pwm/axera,ax620e-pwm.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E PWM controller
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  A block of four PWM channels, DesignWare APB timers in PWM mode that
+  count the timer clock; AX620E SoCs have three.
+
+allOf:
+  - $ref: pwm.yaml#
+
+properties:
+  compatible:
+    const: axera,ax620e-pwm
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: APB bus clock
+      - description: Timer clock of channel 0
+      - description: Timer clock of channel 1
+      - description: Timer clock of channel 2
+      - description: Timer clock of channel 3
+
+  clock-names:
+    items:
+      - const: pclk
+      - const: ch0
+      - const: ch1
+      - const: ch2
+      - const: ch3
+
+  resets:
+    maxItems: 1
+
+  "#pwm-cells":
+    const: 3
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - clock-names
+  - resets
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/axera,ax620e-periph-sys.h>
+    #include <dt-bindings/reset/axera,ax620e-periph-sys.h>
+
+    pwm@6061000 {
+        compatible = "axera,ax620e-pwm";
+        reg = <0x06061000 0x400>;
+        clocks = <&periph_sys AX620E_PERIPH_PCLK_PWM1>,
+                 <&periph_sys AX620E_PERIPH_CLK_PWM10>,
+                 <&periph_sys AX620E_PERIPH_CLK_PWM11>,
+                 <&periph_sys AX620E_PERIPH_CLK_PWM12>,
+                 <&periph_sys AX620E_PERIPH_CLK_PWM13>;
+        clock-names = "pclk", "ch0", "ch1", "ch2", "ch3";
+        resets = <&periph_sys AX620E_PERIPH_RST_PWM1>;
+        #pwm-cells = <3>;
+    };
