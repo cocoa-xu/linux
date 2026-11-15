@@ -36,6 +36,10 @@ properties:
   '#gpio-cells':
     const: 2
 
+  gpio-line-names:
+    minItems: 1
+    maxItems: 32
+
   interrupt-controller: true
 
   '#interrupt-cells':
