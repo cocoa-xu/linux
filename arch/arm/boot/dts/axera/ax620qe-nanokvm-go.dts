@@ -238,8 +238,9 @@
 			thermal-sensors = <&tsensor>;
 
 			trips {
+				/* Shut down before the sensor resets the chip at 120 C. */
 				soc-critical {
-					temperature = <120000>;
+					temperature = <115000>;
 					hysteresis = <0>;
 					type = "critical";
 				};
