@@ -13,6 +13,7 @@
 #include <linux/usb/audio.h>
 #include <linux/usb/audio-v2.h>
 #include <linux/module.h>
+#include <linux/sort.h>
 
 #include "u_audio.h"
 
@@ -654,6 +655,11 @@ struct cntrl_subrange_lay3 {
 } __packed
 
 DECLARE_UAC2_CNTRL_RANGES_LAY3(srates, UAC_MAX_RATES);
+
+static int cmp_srate(const void *a, const void *b)
+{
+	return *(const int *)a - *(const int *)b;
+}
 
 static int get_max_srate(const int *srates)
 {
@@ -1613,6 +1619,7 @@ in_rq_range(struct usb_function *fn, const struct usb_ctrlrequest *cr)
 	if ((entity_id == USB_IN_CLK_ID) || (entity_id == USB_OUT_CLK_ID)) {
 		if (control_selector == UAC2_CS_CONTROL_SAM_FREQ) {
 			struct cntrl_ranges_lay3_srates rs;
+			int sorted[UAC_MAX_RATES];
 			int i;
 			int wNumSubRanges = 0;
 			int srate;
@@ -1624,10 +1631,16 @@ in_rq_range(struct usb_function *fn, const struct usb_ctrlrequest *cr)
 				srates = opts->c_srates;
 			else
 				return -EOPNOTSUPP;
-			for (i = 0; i < UAC_MAX_RATES; i++) {
-				srate = srates[i];
-				if (srate == 0)
-					break;
+			/*
+			 * The subranges ascend, as UAC2 requires; the function
+			 * starts with the first rate configured.
+			 */
+			for (i = 0; i < UAC_MAX_RATES && srates[i]; i++)
+				sorted[i] = srates[i];
+			sort(sorted, i, sizeof(sorted[0]), cmp_srate, NULL);
+
+			for (i = 0; i < UAC_MAX_RATES && srates[i]; i++) {
+				srate = sorted[i];
 
 				rs.r[wNumSubRanges].dMIN = cpu_to_le32(srate);
 				rs.r[wNumSubRanges].dMAX = cpu_to_le32(srate);

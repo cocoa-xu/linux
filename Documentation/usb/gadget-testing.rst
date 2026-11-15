@@ -742,7 +742,8 @@ The uac2 function provides these attributes in its function directory:
 
 	================ ====================================================
 	c_chmask         capture channel mask
-	c_srate          list of capture sampling rates (comma-separated)
+	c_srate          list of capture sampling rates (comma-separated), the
+	                 first the one to start with
 	c_ssize          capture sample size (bytes)
 	c_sync           capture synchronization type (async/adaptive)
 	c_mute_present   capture mute control enable
@@ -753,7 +754,8 @@ The uac2 function provides these attributes in its function directory:
 	c_hs_bint        capture bInterval for HS/SS (1-4: fixed, 0: auto)
 	fb_max           maximum extra bandwidth in async mode
 	p_chmask         playback channel mask
-	p_srate          list of playback sampling rates (comma-separated)
+	p_srate          list of playback sampling rates (comma-separated), the
+	                 first the one to start with
 	p_ssize          playback sample size (bytes)
 	p_mute_present   playback mute control enable
 	p_volume_present playback volume control enable
