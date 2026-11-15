@@ -1,0 +1,48 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/nvmem/axera,ax620e-misc-info.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E chip information in IRAM
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description: |
+  The SPL of Axera AX620E SoCs copies eFuse data to a fixed area of IRAM:
+  board and chip type, the unique ID and sensor calibration. Key material
+  sits right before these fields, so the node must cover the fields only.
+
+allOf:
+  - $ref: nvmem.yaml#
+
+properties:
+  compatible:
+    const: axera,ax620e-misc-info
+
+  reg:
+    maxItems: 1
+
+required:
+  - compatible
+  - reg
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    nvmem@780 {
+        compatible = "axera,ax620e-misc-info";
+        reg = <0x780 0x20>;
+
+        nvmem-layout {
+            compatible = "fixed-layout";
+            #address-cells = <1>;
+            #size-cells = <1>;
+
+            thm-vref@10 {
+                reg = <0x10 0x4>;
+            };
+        };
+    };
