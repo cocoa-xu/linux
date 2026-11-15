@@ -11,6 +11,7 @@
 #include <dt-bindings/clock/axera,ax620e-periph-sys.h>
 #include <dt-bindings/clock/axera,ax620e-vpu-sys.h>
 #include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/linux-event-codes.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/reset/axera,ax620e-comm-glb.h>
 #include <dt-bindings/reset/axera,ax620e-flash-sys.h>
@@ -229,6 +230,17 @@
 	/* Node the out-of-tree AIC8800 driver looks for; power is mmc-pwrseq. */
 	wifi-bsp {
 		compatible = "aicsemi,aic_bsp";
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		/* Held at power-on, U-Boot starts the stock recovery. */
+		button {
+			label = "BOOT";
+			linux,code = <KEY_PROG1>;
+			gpios = <&gpio3 2 GPIO_ACTIVE_LOW>;
+		};
 	};
 
 	/* On while the panel shows something; the pad is a GPIO (UART1_TXD). */
