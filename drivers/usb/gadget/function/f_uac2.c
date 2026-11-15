@@ -770,6 +770,32 @@ static int set_ep_max_packet_size_bint(struct device *dev, const struct f_uac2_o
 	return 0;
 }
 
+/*
+ * Matches an isochronous endpoint by its high-speed packet size where the
+ * gadget has high speed: rates only high speed carries may need full-speed
+ * packets larger than any endpoint takes. Full speed then gets the packets
+ * the endpoint takes, and drops data as warned.
+ */
+static struct usb_ep *autoconfig_isoc(struct usb_gadget *gadget,
+				      struct usb_endpoint_descriptor *fs_desc,
+				      struct usb_endpoint_descriptor *hs_desc)
+{
+	struct usb_ep *ep;
+
+	if (!gadget_is_dualspeed(gadget))
+		return usb_ep_autoconfig(gadget, fs_desc);
+
+	ep = usb_ep_autoconfig(gadget, hs_desc);
+	if (!ep)
+		return NULL;
+
+	fs_desc->bEndpointAddress = hs_desc->bEndpointAddress;
+	if (usb_endpoint_maxp(fs_desc) > ep->maxpacket_limit)
+		fs_desc->wMaxPacketSize = cpu_to_le16(ep->maxpacket_limit);
+
+	return ep;
+}
+
 static struct uac2_feature_unit_descriptor *build_fu_desc(int chmask)
 {
 	struct uac2_feature_unit_descriptor *fu_desc;
@@ -1252,7 +1278,7 @@ afunc_bind(struct usb_configuration *cfg, struct usb_function *fn)
 	}
 
 	if (EPOUT_EN(uac2_opts)) {
-		agdev->out_ep = usb_ep_autoconfig(gadget, &fs_epout_desc);
+		agdev->out_ep = autoconfig_isoc(gadget, &fs_epout_desc, &hs_epout_desc);
 		if (!agdev->out_ep) {
 			dev_err(dev, "%s:%d Error!\n", __func__, __LINE__);
 			ret = -ENODEV;
@@ -1271,7 +1297,7 @@ afunc_bind(struct usb_configuration *cfg, struct usb_function *fn)
 	}
 
 	if (EPIN_EN(uac2_opts)) {
-		agdev->in_ep = usb_ep_autoconfig(gadget, &fs_epin_desc);
+		agdev->in_ep = autoconfig_isoc(gadget, &fs_epin_desc, &hs_epin_desc);
 		if (!agdev->in_ep) {
 			dev_err(dev, "%s:%d Error!\n", __func__, __LINE__);
 			ret = -ENODEV;
