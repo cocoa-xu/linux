@@ -26,6 +26,9 @@
 	interrupt-parent = <&gic>;
 
 	aliases {
+		i2c0 = &i2c0;
+		i2c1 = &i2c1;
+		i2c2 = &expansion_i2c;
 		mmc0 = &sd;
 		mmc1 = &sdio;
 		serial3 = &uart3;
@@ -244,6 +247,37 @@
 	};
 
 	/*
+	 * The auxiliary USB-C port's expansion lines are UART3's pads: line 0
+	 * on UART3_TXD (GPIO1 line 2, PWM1 channel 0), line 1 on UART3_RXD
+	 * (GPIO1 line 3, PWM1 channel 1). They start as inputs pulled down.
+	 */
+	expansion {
+		compatible = "sipeed,nanokvm-go-expansion";
+		line-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>, <&gpio1 3 GPIO_ACTIVE_HIGH>;
+		pwms = <&pwm1 0 20000000 0>, <&pwm1 1 20000000 0>;
+		pwm-names = "line0", "line1";
+		pinctrl-names = "off", "uart", "gpio", "pwm", "pwm-gpio",
+				"gpio-pwm", "i2c";
+		pinctrl-0 = <&expansion_off_pins>;
+		pinctrl-1 = <&expansion_uart_pins>;
+		pinctrl-2 = <&expansion_gpio_pins>;
+		pinctrl-3 = <&expansion_pwm_pins>;
+		pinctrl-4 = <&expansion_pwm_gpio_pins>;
+		pinctrl-5 = <&expansion_gpio_pwm_pins>;
+		pinctrl-6 = <&expansion_i2c_pins>;
+
+		/* Modules usually pull SDA and SCL up; 10 us is about 50 kHz. */
+		expansion_i2c: i2c {
+			compatible = "i2c-gpio";
+			sda-gpios = <&gpio1 2 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+			scl-gpios = <&gpio1 3 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+			i2c-gpio,delay-us = <10>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+	};
+
+	/*
 	 * PWM1 channel 2 at 25 kHz, above hearing, in 960 steps of the 24 MHz
 	 * timer. Levels 0 to 100 follow CIE lightness: each step looks as much
 	 * brighter as the one before.
@@ -361,6 +395,7 @@
 			resets = <&periph_sys AX620E_PERIPH_RST_GPIO1>;
 			gpio-controller;
 			#gpio-cells = <2>;
+			gpio-line-names = "", "", "EXPANSION0", "EXPANSION1";
 			interrupt-controller;
 			#interrupt-cells = <2>;
 		};
@@ -577,7 +612,8 @@
 
 		/*
 		 * Pad groups: one register per pin, function in [18:16],
-		 * pull-up bit 7, pull-down bit 6, drive strength [3:0].
+		 * pull-up bit 7, pull-down bit 6, Schmitt trigger bit 4,
+		 * drive strength [3:0].
 		 */
 		pinctrl@2304000 {
 			compatible = "pinctrl-single";
@@ -610,6 +646,56 @@
 				pinctrl-single,pins = <
 					0x6c 0x60083	/* UART2_TXD: GPIO1_A0, interrupt */
 					0x78 0x60003	/* UART2_RXD: GPIO1_A1, reset */
+				>;
+			};
+
+			/* The expansion lines: UART3_TXD and UART3_RXD. */
+			expansion_off_pins: expansion-off-pins {
+				pinctrl-single,pins = <
+					0x84 0x60043	/* GPIO1_A2, pull-down */
+					0x90 0x60043	/* GPIO1_A3, pull-down */
+				>;
+			};
+
+			expansion_uart_pins: expansion-uart-pins {
+				pinctrl-single,pins = <
+					0x84 0x83	/* UART3_TXD, pull-up */
+					0x90 0x93	/* UART3_RXD, pull-up, Schmitt */
+				>;
+			};
+
+			expansion_gpio_pins: expansion-gpio-pins {
+				pinctrl-single,pins = <
+					0x84 0x60053	/* GPIO1_A2, pull-down, Schmitt */
+					0x90 0x60053	/* GPIO1_A3, pull-down, Schmitt */
+				>;
+			};
+
+			expansion_pwm_pins: expansion-pwm-pins {
+				pinctrl-single,pins = <
+					0x84 0x30043	/* PWM04, pull-down */
+					0x90 0x30043	/* PWM05, pull-down */
+				>;
+			};
+
+			expansion_pwm_gpio_pins: expansion-pwm-gpio-pins {
+				pinctrl-single,pins = <
+					0x84 0x30043	/* PWM04, pull-down */
+					0x90 0x60053	/* GPIO1_A3, pull-down, Schmitt */
+				>;
+			};
+
+			expansion_gpio_pwm_pins: expansion-gpio-pwm-pins {
+				pinctrl-single,pins = <
+					0x84 0x60053	/* GPIO1_A2, pull-down, Schmitt */
+					0x90 0x30043	/* PWM05, pull-down */
+				>;
+			};
+
+			expansion_i2c_pins: expansion-i2c-pins {
+				pinctrl-single,pins = <
+					0x84 0x60093	/* GPIO1_A2, pull-up, Schmitt */
+					0x90 0x60093	/* GPIO1_A3, pull-up, Schmitt */
 				>;
 			};
 		};
@@ -734,6 +820,7 @@
 						 <&npll_533m>;
 		};
 
+		/* Its pads are the expansion lines, set by their driver. */
 		uart3: serial@6080000 {
 			compatible = "snps,dw-apb-uart";
 			reg = <0x06080000 0x400>;
