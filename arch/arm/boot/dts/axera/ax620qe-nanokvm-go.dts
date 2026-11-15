@@ -244,12 +244,13 @@
 	};
 
 	/*
-	 * PWM1 channel 2 at stock's 2.16 kHz. Levels 0 to 100 follow CIE
-	 * lightness: each step looks as much brighter as the one before.
+	 * PWM1 channel 2 at 25 kHz, above hearing, in 960 steps of the 24 MHz
+	 * timer. Levels 0 to 100 follow CIE lightness: each step looks as much
+	 * brighter as the one before.
 	 */
 	backlight: backlight {
 		compatible = "pwm-backlight";
-		pwms = <&pwm1 2 462963 0>;
+		pwms = <&pwm1 2 40000 0>;
 		brightness-levels = <0 12 31 64 115 188 288 417 580 781 1023>;
 		num-interpolated-steps = <10>;
 		default-brightness-level = <100>;
