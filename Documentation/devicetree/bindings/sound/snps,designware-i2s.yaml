@@ -71,10 +71,13 @@ properties:
     minItems: 1
 
   dma-names:
-    items:
-      - const: tx
-      - const: rx
-    minItems: 1
+    oneOf:
+      - items:
+          - const: tx
+          - const: rx
+        minItems: 1
+      - items:
+          - const: rx
 
   starfive,syscon:
     $ref: /schemas/types.yaml#/definitions/phandle-array
