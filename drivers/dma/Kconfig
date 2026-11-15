@@ -115,6 +115,20 @@ config AT_XDMAC
 	help
 	  Support the Atmel XDMA controller.
 
+config AX620E_PDMA
+	tristate "Axera AX620E peripheral DMA support"
+	depends on ARCH_AXERA || COMPILE_TEST
+	depends on HAS_IOMEM
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	select MFD_SYSCON
+	help
+	  Support for the DMA controller of the low-speed peripherals (I2S,
+	  SPI, UART) of Axera AX620E SoCs.
+
+	  This driver can also be built as a module. If so, the module will
+	  be called ax620e-pdma.
+
 config AXI_DMAC
 	tristate "Analog Devices AXI-DMAC DMA support"
 	depends on MICROBLAZE || NIOS2 || ARCH_ZYNQ || ARCH_ZYNQMP || ARCH_INTEL_SOCFPGA || COMPILE_TEST
