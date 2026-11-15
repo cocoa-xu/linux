@@ -494,6 +494,8 @@ static const struct ax620e_glb_gate periph_gates[] = {
 	PERIPH_GATE(AX620E_PERIPH_PCLK_WDT2, "pclk_wdt2", AX_GLB_NO_PARENT, 0x10, 20),
 	{ AX620E_PERIPH_CLK_I2S_REF, "i2s_ref", AX_GLB_NO_PARENT, "hpll_12m288", 0x4, 3 },
 	PERIPH_GATE(AX620E_PERIPH_PCLK_I2S_S, "pclk_i2s_s", AX_GLB_NO_PARENT, 0xc, 28),
+	PERIPH_GATE(AX620E_PERIPH_ACLK_DMA, "aclk_dma", AX_GLB_NO_PARENT, 0x8, 0),
+	PERIPH_GATE(AX620E_PERIPH_PCLK_DMA, "pclk_dma", AX_GLB_NO_PARENT, 0xc, 11),
 };
 
 /* Each block has an APB reset and a core reset; they are used together. */
@@ -512,6 +514,8 @@ static const struct ax620e_glb_reset periph_resets[] = {
 	[AX620E_PERIPH_RST_WDT2] = { 0x24, BIT(2) | BIT(3) },
 	[AX620E_PERIPH_RST_I2S_S_APB] = { 0x1c, BIT(8) },
 	[AX620E_PERIPH_RST_I2S_S] = { 0x1c, BIT(9) },
+	[AX620E_PERIPH_RST_DMA_AXI] = { 0x18, BIT(1) },
+	[AX620E_PERIPH_RST_DMA_APB] = { 0x18, BIT(2) },
 };
 
 static const struct ax620e_glb_data ax620e_periph_sys_data = {
@@ -524,7 +528,7 @@ static const struct ax620e_glb_data ax620e_periph_sys_data = {
 	.num_gates = ARRAY_SIZE(periph_gates),
 	.resets = periph_resets,
 	.num_resets = ARRAY_SIZE(periph_resets),
-	.num_clks = AX620E_PERIPH_PCLK_I2S_S + 1,
+	.num_clks = AX620E_PERIPH_PCLK_DMA + 1,
 	.audio_routing = 0x3c,
 };
 
