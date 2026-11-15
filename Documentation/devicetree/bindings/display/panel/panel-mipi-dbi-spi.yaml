@@ -75,6 +75,7 @@ properties:
           - saef,sftc154b
           - sainsmart18
           - shineworld,lh133k
+          - sipeed,nanokvm-go-lcd
       - const: panel-mipi-dbi-spi
 
   reg:
