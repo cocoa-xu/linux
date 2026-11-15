@@ -788,6 +788,8 @@ static struct usb_ep *autoconfig_isoc(struct usb_gadget *gadget,
 	if (!gadget_is_dualspeed(gadget))
 		return usb_ep_autoconfig(gadget, fs_desc);
 
+	/* Only the full-speed descriptors are set up with their direction. */
+	hs_desc->bEndpointAddress = fs_desc->bEndpointAddress & USB_DIR_IN;
 	ep = usb_ep_autoconfig(gadget, hs_desc);
 	if (!ep)
 		return NULL;
