@@ -70,4 +70,5 @@ obj-$(CONFIG_MCHP_LAN966X_PCI)	+= lan966x-pci.o
 obj-y				+= keba/
 obj-y				+= amd-sbi/
 obj-$(CONFIG_MISC_RP1)		+= rp1/
+obj-$(CONFIG_NANOKVM_GO_EXPANSION)	+= nanokvm-go-expansion.o
 obj-$(CONFIG_INTEL_SSEI)	+= issei/

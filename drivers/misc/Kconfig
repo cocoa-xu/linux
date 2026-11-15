@@ -568,6 +568,19 @@ config MCHP_LAN966X_PCI
 	    - lan966x-miim (MDIO_MSCC_MIIM)
 	    - lan966x-switch (LAN966X_SWITCH)
 
+config NANOKVM_GO_EXPANSION
+	tristate "Sipeed NanoKVM-Go expansion lines"
+	depends on ARCH_AXERA || COMPILE_TEST
+	depends on GPIOLIB && OF && PINCTRL && PWM
+	help
+	  The auxiliary USB-C port of the Sipeed NanoKVM-Go carries two SoC
+	  pads. Each can be a UART line, a PWM output or a GPIO, and the two
+	  can be an I2C bus. This driver keeps them as inputs pulled down
+	  until userspace picks a mode through sysfs.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called nanokvm-go-expansion.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"

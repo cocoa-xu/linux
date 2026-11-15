@@ -1,0 +1,32 @@
+What:		/sys/bus/platform/drivers/nanokvm-go-expansion/<device>/mode
+Date:		November 2026
+KernelVersion:	7.4
+Contact:	Cocoa <i@uwucocoa.moe>
+Description:
+		(RW) What the two lines of the auxiliary USB-C port are, one
+		of the names in "modes":
+
+		========  ===================================================
+		off       both inputs, pulled down: the mode at boot
+		uart      the UART, TXD on line 0 and RXD on line 1
+		gpio      both GPIOs, for userspace
+		pwm       both PWM outputs, for userspace
+		pwm-gpio  line 0 a PWM output, line 1 a GPIO
+		gpio-pwm  line 0 a GPIO, line 1 a PWM output
+		i2c       a bit-banged I2C bus, SDA on line 0 and SCL on
+		          line 1, both pulled up
+		========  ===================================================
+
+		The GPIOs and PWM channels a mode does not hand to
+		userspace stay requested by the driver, the GPIOs as inputs
+		and the PWM channels disabled. Writing a mode fails with
+		EBUSY while userspace still holds a GPIO or a PWM channel
+		that the new mode takes back.
+
+What:		/sys/bus/platform/drivers/nanokvm-go-expansion/<device>/modes
+Date:		November 2026
+KernelVersion:	7.4
+Contact:	Cocoa <i@uwucocoa.moe>
+Description:
+		(RO) The modes the device tree describes, separated by
+		spaces.
