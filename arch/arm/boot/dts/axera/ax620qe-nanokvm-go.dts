@@ -231,6 +231,12 @@
 		compatible = "aicsemi,aic_bsp";
 	};
 
+	/* On while the panel shows something; the pad is a GPIO (UART1_TXD). */
+	backlight: backlight {
+		compatible = "gpio-backlight";
+		gpios = <&gpio0 30 GPIO_ACTIVE_HIGH>;
+	};
+
 	thermal-zones {
 		soc-thermal {
 			polling-delay = <2000>;
@@ -425,6 +431,53 @@
 			 * vendor kernel sets it.
 			 */
 			axera,audio-routing = <0x00180320>;
+		};
+
+		/*
+		 * The LCD's controller. SCLK and MOSI are on RGMII_TXCLK and
+		 * RGMII_TXD0 (function 4), as the first boot stage leaves them;
+		 * chip select, data/command and reset are GPIOs.
+		 */
+		spi@6072000 {
+			compatible = "snps,dw-apb-ssi";
+			reg = <0x06072000 0x400>;
+			interrupts = <GIC_SPI 153 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_CLK_SPI2>,
+				 <&periph_sys AX620E_PERIPH_PCLK_SPI2>;
+			clock-names = "ssi_clk", "pclk";
+			resets = <&periph_sys AX620E_PERIPH_RST_SPI2>;
+			reset-names = "spi";
+			cs-gpios = <&gpio1 27 GPIO_ACTIVE_LOW>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/*
+			 * ST7789P3, 240x284 of its 240x320 RAM from the top; the
+			 * init sequence is the firmware file named after the
+			 * first compatible.
+			 */
+			display@0 {
+				compatible = "sipeed,nanokvm-go-lcd", "panel-mipi-dbi-spi";
+				reg = <0>;
+				spi-max-frequency = <52000000>;
+				dc-gpios = <&gpio1 19 GPIO_ACTIVE_HIGH>;
+				reset-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;
+				backlight = <&backlight>;
+				width-mm = <28>;
+				height-mm = <33>;
+
+				panel-timing {
+					hactive = <240>;
+					vactive = <284>;
+					hback-porch = <0>;
+					vback-porch = <0>;
+					clock-frequency = <0>;
+					hfront-porch = <0>;
+					hsync-len = <0>;
+					vfront-porch = <0>;
+					vsync-len = <0>;
+				};
+			};
 		};
 
 		pdma: dma-controller@48a0000 {
