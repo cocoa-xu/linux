@@ -529,8 +529,8 @@
 				dc-gpios = <&gpio1 19 GPIO_ACTIVE_HIGH>;
 				reset-gpios = <&gpio0 31 GPIO_ACTIVE_HIGH>;
 				backlight = <&backlight>;
-				width-mm = <28>;
-				height-mm = <33>;
+				width-mm = <30>;
+				height-mm = <35>;
 
 				panel-timing {
 					hactive = <240>;
