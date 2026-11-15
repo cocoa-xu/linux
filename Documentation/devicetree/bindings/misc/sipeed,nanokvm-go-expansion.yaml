@@ -1,0 +1,87 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/misc/sipeed,nanokvm-go-expansion.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Sipeed NanoKVM-Go expansion lines
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  The two SoC pads that the NanoKVM-Go's auxiliary USB-C port carries, line
+  0 and line 1. Each is a UART line, a PWM output or a GPIO depending on its
+  pin function, and the two can be a bit-banged I2C bus. Every mode is the
+  pin state named after it; "off" leaves both lines as inputs pulled down
+  and is the one required.
+
+allOf:
+  - $ref: /schemas/pinctrl/pinctrl-consumer.yaml#
+
+properties:
+  compatible:
+    const: sipeed,nanokvm-go-expansion
+
+  line-gpios:
+    description: The lines as GPIOs, line 0 first.
+    minItems: 2
+    maxItems: 2
+
+  pwms:
+    minItems: 2
+    maxItems: 2
+
+  pwm-names:
+    items:
+      - const: line0
+      - const: line1
+
+  pinctrl-names:
+    minItems: 1
+    maxItems: 7
+    items:
+      enum: ["off", uart, gpio, pwm, pwm-gpio, gpio-pwm, i2c]
+    contains:
+      const: "off"
+
+  i2c:
+    $ref: /schemas/i2c/i2c-gpio.yaml#
+    unevaluatedProperties: false
+    description:
+      The bus of the "i2c" mode, SDA on line 0 and SCL on line 1. It only
+      exists while that mode is selected.
+
+required:
+  - compatible
+  - line-gpios
+  - pwms
+  - pwm-names
+  - pinctrl-names
+  - pinctrl-0
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/gpio/gpio.h>
+
+    expansion {
+        compatible = "sipeed,nanokvm-go-expansion";
+        line-gpios = <&gpio1 2 GPIO_ACTIVE_HIGH>, <&gpio1 3 GPIO_ACTIVE_HIGH>;
+        pwms = <&pwm1 0 20000000 0>, <&pwm1 1 20000000 0>;
+        pwm-names = "line0", "line1";
+        pinctrl-names = "off", "uart", "i2c";
+        pinctrl-0 = <&expansion_off_pins>;
+        pinctrl-1 = <&expansion_uart_pins>;
+        pinctrl-2 = <&expansion_i2c_pins>;
+
+        i2c {
+            compatible = "i2c-gpio";
+            sda-gpios = <&gpio1 2 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+            scl-gpios = <&gpio1 3 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
+            i2c-gpio,delay-us = <10>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+        };
+    };
