@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/arm/axera.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera platforms
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+properties:
+  $nodename:
+    const: '/'
+  compatible:
+    oneOf:
+      - description: AX620QE based boards
+        items:
+          - enum:
+              - sipeed,nanokvm-go
+          - const: axera,ax620qe
+
+additionalProperties: true
+
+...
