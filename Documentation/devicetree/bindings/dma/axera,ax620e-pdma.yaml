@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/dma/axera,ax620e-pdma.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E peripheral DMA controller
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  The DMA controller of the low-speed peripherals (I2S, SPI, UART) on Axera
+  AX620E SoCs. Its sixteen channels walk lists of descriptors in memory;
+  the peripheral request that paces a channel is selected in the
+  peripheral system controller. The specifier cell is that request.
+
+allOf:
+  - $ref: dma-controller.yaml#
+
+properties:
+  compatible:
+    const: axera,ax620e-pdma
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: AXI clock
+      - description: APB clock
+
+  resets:
+    items:
+      - description: AXI reset
+      - description: APB reset
+
+  reset-names:
+    items:
+      - const: axi
+      - const: apb
+
+  axera,periph-sys:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      The peripheral system controller, which routes the peripheral
+      requests to the channels.
+
+  dma-channels:
+    const: 16
+
+  '#dma-cells':
+    const: 1
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - clocks
+  - resets
+  - reset-names
+  - axera,periph-sys
+  - '#dma-cells'
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/axera,ax620e-periph-sys.h>
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+    #include <dt-bindings/reset/axera,ax620e-periph-sys.h>
+
+    dma-controller@48a0000 {
+        compatible = "axera,ax620e-pdma";
+        reg = <0x048a0000 0x1000>;
+        interrupts = <GIC_SPI 112 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&periph_sys AX620E_PERIPH_ACLK_DMA>,
+                 <&periph_sys AX620E_PERIPH_PCLK_DMA>;
+        resets = <&periph_sys AX620E_PERIPH_RST_DMA_AXI>,
+                 <&periph_sys AX620E_PERIPH_RST_DMA_APB>;
+        reset-names = "axi", "apb";
+        axera,periph-sys = <&periph_sys>;
+        dma-channels = <16>;
+        #dma-cells = <1>;
+    };

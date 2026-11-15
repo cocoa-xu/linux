@@ -11,14 +11,18 @@ maintainers:
 
 description:
   Clock gates, source muxes and resets of the low-speed peripherals (GPIO,
-  I2C, I2S) on Axera AX620E SoCs, and the routing of the I2S controllers.
+  I2C, I2S, DMA) on Axera AX620E SoCs, the routing of the I2S controllers
+  and of the peripheral DMA requests, which the DMA controller reaches as
+  a syscon.
   Indices are defined in
   include/dt-bindings/clock/axera,ax620e-periph-sys.h and
   include/dt-bindings/reset/axera,ax620e-periph-sys.h.
 
 properties:
   compatible:
-    const: axera,ax620e-periph-sys
+    items:
+      - const: axera,ax620e-periph-sys
+      - const: syscon
 
   reg:
     maxItems: 1
@@ -69,7 +73,7 @@ additionalProperties: false
 examples:
   - |
     clock-controller@4870000 {
-        compatible = "axera,ax620e-periph-sys";
+        compatible = "axera,ax620e-periph-sys", "syscon";
         reg = <0x04870000 0x1000>;
         clocks = <&rtc_32k>, <&cpll_24m>, <&epll_50m>,
                  <&cpll_156m>, <&cpll_208m>, <&pclk_top>,
