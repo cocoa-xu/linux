@@ -1,0 +1,79 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/npu/axera,ax620e-npu.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E NPU
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  The neural network accelerator of the Axera AX620E family. Four execution
+  units run the command streams of compiled models, which a dispatcher feeds
+  from 2.5 MiB of on-chip memory. The NPU has its own clock muxes, gates and
+  resets, and splits into two virtual NPUs, each with a task-done and an
+  error interrupt. It has no IOMMU, so its buffers must be physically
+  contiguous.
+
+properties:
+  compatible:
+    const: axera,ax620e-npu
+
+  reg:
+    items:
+      - description:
+          Execution units, dispatcher, sync manager, fabric and the global
+          clock and reset controls
+      - description: On-chip memory
+
+  reg-names:
+    items:
+      - const: regs
+      - const: ocm
+
+  interrupts:
+    items:
+      - description: Virtual NPU 0 finished a task
+      - description: Virtual NPU 1 finished a task
+      - description: Virtual NPU 0 error
+      - description: Virtual NPU 1 error
+      - description: Global
+
+  interrupt-names:
+    items:
+      - const: normal0
+      - const: normal1
+      - const: error0
+      - const: error1
+      - const: top
+
+  memory-region:
+    maxItems: 1
+    description: Where the NPU's buffers come from.
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - interrupts
+  - interrupt-names
+
+additionalProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+
+    npu@3800000 {
+        compatible = "axera,ax620e-npu";
+        reg = <0x03800000 0xb0000>, <0x03000000 0x280000>;
+        reg-names = "regs", "ocm";
+        interrupts = <GIC_SPI 38 IRQ_TYPE_EDGE_RISING>,
+                     <GIC_SPI 39 IRQ_TYPE_EDGE_RISING>,
+                     <GIC_SPI 42 IRQ_TYPE_EDGE_RISING>,
+                     <GIC_SPI 43 IRQ_TYPE_EDGE_RISING>,
+                     <GIC_SPI 40 IRQ_TYPE_EDGE_RISING>;
+        interrupt-names = "normal0", "normal1", "error0", "error1", "top";
+    };
