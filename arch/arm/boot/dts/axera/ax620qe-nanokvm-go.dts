@@ -404,6 +404,37 @@
 			};
 		};
 
+		/* The LCD's touch panel. */
+		i2c1: i2c@4851000 {
+			compatible = "snps,designware-i2c";
+			reg = <0x04851000 0x400>;
+			interrupts = <GIC_SPI 136 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_CLK_I2C1>,
+				 <&periph_sys AX620E_PERIPH_PCLK_I2C1>;
+			clock-names = "ref", "pclk";
+			resets = <&periph_sys AX620E_PERIPH_RST_I2C1>;
+			clock-frequency = <400000>;
+			pinctrl-names = "default";
+			pinctrl-0 = <&i2c1_pins>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			/*
+			 * 240x296 points over the 240x284 panel, Y from the
+			 * bottom up. The pads (VI_D2, VI_D4) are GPIOs.
+			 */
+			touchscreen@15 {
+				compatible = "hynitron,cst816s";
+				reg = <0x15>;
+				interrupt-parent = <&gpio0>;
+				interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+				reset-gpios = <&gpio0 4 GPIO_ACTIVE_LOW>;
+				touchscreen-size-x = <240>;
+				touchscreen-size-y = <296>;
+				touchscreen-inverted-y;
+			};
+		};
+
 		watchdog@4840000 {
 			compatible = "axera,ax620e-wdt";
 			reg = <0x04840000 0x400>;
@@ -523,6 +554,13 @@
 				pinctrl-single,pins = <
 					0x0c 0x83	/* I2C0_SCL */
 					0x18 0x83	/* I2C0_SDA */
+				>;
+			};
+
+			i2c1_pins: i2c1-pins {
+				pinctrl-single,pins = <
+					0x24 0x83	/* I2C1_SCL */
+					0x30 0x83	/* I2C1_SDA */
 				>;
 			};
 
