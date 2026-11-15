@@ -409,7 +409,7 @@
 		};
 
 		periph_sys: clock-controller@4870000 {
-			compatible = "axera,ax620e-periph-sys";
+			compatible = "axera,ax620e-periph-sys", "syscon";
 			reg = <0x04870000 0x1000>;
 			clocks = <&rtc_32k>, <&cpll_24m>, <&epll_50m>,
 				 <&cpll_156m>, <&cpll_208m>, <&pclk_top>,
@@ -427,10 +427,26 @@
 			axera,audio-routing = <0x00180320>;
 		};
 
+		pdma: dma-controller@48a0000 {
+			compatible = "axera,ax620e-pdma";
+			reg = <0x048a0000 0x1000>;
+			interrupts = <GIC_SPI 112 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&periph_sys AX620E_PERIPH_ACLK_DMA>,
+				 <&periph_sys AX620E_PERIPH_PCLK_DMA>;
+			resets = <&periph_sys AX620E_PERIPH_RST_DMA_AXI>,
+				 <&periph_sys AX620E_PERIPH_RST_DMA_APB>;
+			reset-names = "axi", "apb";
+			axera,periph-sys = <&periph_sys>;
+			dma-channels = <16>;
+			#dma-cells = <1>;
+		};
+
+		/* With no interrupt, the DesignWare I2S driver uses the DMA. */
 		i2s_slave: i2s@6051000 {
 			compatible = "axera,ax620e-i2s";
 			reg = <0x06051000 0x400>;
-			interrupts = <GIC_SPI 145 IRQ_TYPE_LEVEL_HIGH>;
+			dmas = <&pdma 17>;
+			dma-names = "rx";
 			clocks = <&periph_sys AX620E_PERIPH_CLK_I2S_REF>,
 				 <&periph_sys AX620E_PERIPH_PCLK_I2S_S>;
 			clock-names = "i2sclk", "apb";
