@@ -1,0 +1,15 @@
+What:		/sys/bus/platform/devices/<device>/pwm_period_ns
+Date:		November 2026
+KernelVersion:	7.4
+Contact:	dri-devel@lists.freedesktop.org
+Description:
+		(RW) The period, in nanoseconds, of the PWM that a
+		pwm-backlight device dims with. It starts as the period in
+		the device tree or the platform data. Writing a period changes
+		the PWM frequency and keeps the brightness, for instance to
+		move the frequency out of hearing or away from a camera's
+		line rate. The PWM driver may round the period; a period it
+		cannot make is refused with EINVAL.
+
+		The backlight class device links here as "device", so this is
+		also /sys/class/backlight/<backlight>/device/pwm_period_ns.

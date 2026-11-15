@@ -13,15 +13,19 @@
 #include <linux/platform_device.h>
 #include <linux/backlight.h>
 #include <linux/err.h>
+#include <linux/math64.h>
+#include <linux/mutex.h>
 #include <linux/pwm.h>
 #include <linux/pwm_backlight.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
+#include <linux/sysfs.h>
 
 struct pwm_bl_data {
 	struct pwm_device	*pwm;
 	struct device		*dev;
 	unsigned int		lth_brightness;
+	unsigned int		lth_level;
 	unsigned int		*levels;
 	bool			enabled;
 	struct regulator	*power_supply;
@@ -130,6 +134,60 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 static const struct backlight_ops pwm_backlight_ops = {
 	.update_status	= pwm_backlight_update_status,
 };
+
+static ssize_t pwm_period_ns_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	struct backlight_device *bl = dev_get_drvdata(dev);
+	struct pwm_bl_data *pb = bl_get_data(bl);
+	struct pwm_state state;
+
+	pwm_get_state(pb->pwm, &state);
+
+	return sysfs_emit(buf, "%llu\n", state.period);
+}
+
+static ssize_t pwm_period_ns_store(struct device *dev,
+				   struct device_attribute *attr,
+				   const char *buf, size_t count)
+{
+	struct backlight_device *bl = dev_get_drvdata(dev);
+	struct pwm_bl_data *pb = bl_get_data(bl);
+	struct pwm_state state;
+	u64 period;
+	int ret;
+
+	ret = kstrtou64(buf, 0, &period);
+	if (ret)
+		return ret;
+
+	if (!period)
+		return -EINVAL;
+
+	guard(mutex)(&bl->update_lock);
+
+	/* Scale the duty cycle along so that it never exceeds the period. */
+	pwm_get_state(pb->pwm, &state);
+	state.duty_cycle = state.period ?
+		mul_u64_u64_div_u64(state.duty_cycle, period, state.period) : 0;
+	state.period = period;
+
+	ret = pwm_apply_might_sleep(pb->pwm, &state);
+	if (ret)
+		return ret;
+
+	pb->lth_brightness = pb->lth_level * div_u64(period, pb->scale);
+	pwm_backlight_update_status(bl);
+
+	return count;
+}
+static DEVICE_ATTR_RW(pwm_period_ns);
+
+static struct attribute *pwm_backlight_attrs[] = {
+	&dev_attr_pwm_period_ns.attr,
+	NULL
+};
+ATTRIBUTE_GROUPS(pwm_backlight);
 
 #ifdef CONFIG_OF
 #define PWM_LUMINANCE_SHIFT	16
@@ -579,6 +637,7 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 		pb->scale = data->max_brightness;
 	}
 
+	pb->lth_level = data->lth_brightness;
 	pb->lth_brightness = data->lth_brightness * (div_u64(state.period,
 				pb->scale));
 
@@ -693,6 +752,7 @@ static const struct dev_pm_ops pwm_backlight_pm_ops = {
 static struct platform_driver pwm_backlight_driver = {
 	.driver		= {
 		.name		= "pwm-backlight",
+		.dev_groups	= pwm_backlight_groups,
 		.pm		= &pwm_backlight_pm_ops,
 		.of_match_table	= of_match_ptr(pwm_backlight_of_match),
 	},
