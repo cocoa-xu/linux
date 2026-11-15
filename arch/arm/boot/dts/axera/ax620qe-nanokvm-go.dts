@@ -79,6 +79,17 @@
 			size = <0x0c000000>;
 			linux,cma-default;
 		};
+
+		/*
+		 * The NPU has no IOMMU: models and their inputs and outputs need
+		 * contiguous memory that video capture cannot take. Movable pages
+		 * use it while the NPU does not.
+		 */
+		npu_memory: npu-memory {
+			compatible = "shared-dma-pool";
+			reusable;
+			size = <0x04000000>;
+		};
 	};
 
 	/* PLL outputs set up by the boot firmware (no PLL driver yet). */
@@ -786,6 +797,21 @@
 					data-lanes = <1 2 3 4>;
 				};
 			};
+		};
+
+		npu@3800000 {
+			compatible = "axera,ax620e-npu";
+			reg = <0x03800000 0xb0000>,
+			      <0x03000000 0x280000>;
+			reg-names = "regs", "ocm";
+			interrupts = <GIC_SPI 38 IRQ_TYPE_EDGE_RISING>,
+				     <GIC_SPI 39 IRQ_TYPE_EDGE_RISING>,
+				     <GIC_SPI 42 IRQ_TYPE_EDGE_RISING>,
+				     <GIC_SPI 43 IRQ_TYPE_EDGE_RISING>,
+				     <GIC_SPI 40 IRQ_TYPE_EDGE_RISING>;
+			interrupt-names = "normal0", "normal1", "error0", "error1",
+					  "top";
+			memory-region = <&npu_memory>;
 		};
 
 		jpeg-encoder@4000000 {
