@@ -341,6 +341,8 @@ static int ax620e_glb_probe(struct platform_device *pdev)
 		hw = ax620e_glb_register(dev, &tmpl, &init);
 		if (IS_ERR(hw))
 			return PTR_ERR(hw);
+		if (WARN_ON(mux->id >= data->num_clks))
+			return -EINVAL;
 		clk_data->hws[mux->id] = hw;
 	}
 
@@ -364,6 +366,8 @@ static int ax620e_glb_probe(struct platform_device *pdev)
 		hw = ax620e_glb_register(dev, &tmpl, &init);
 		if (IS_ERR(hw))
 			return PTR_ERR(hw);
+		if (WARN_ON(div->id >= data->num_clks))
+			return -EINVAL;
 		clk_data->hws[div->id] = hw;
 	}
 
@@ -390,6 +394,8 @@ static int ax620e_glb_probe(struct platform_device *pdev)
 		hw = ax620e_glb_register(dev, &tmpl, &init);
 		if (IS_ERR(hw))
 			return PTR_ERR(hw);
+		if (WARN_ON(gate->id >= data->num_clks))
+			return -EINVAL;
 		clk_data->hws[gate->id] = hw;
 	}
 
