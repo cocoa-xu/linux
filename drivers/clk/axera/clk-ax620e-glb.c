@@ -496,6 +496,9 @@ static const struct ax620e_glb_gate periph_gates[] = {
 	PERIPH_GATE(AX620E_PERIPH_PCLK_I2S_S, "pclk_i2s_s", AX_GLB_NO_PARENT, 0xc, 28),
 	PERIPH_GATE(AX620E_PERIPH_ACLK_DMA, "aclk_dma", AX_GLB_NO_PARENT, 0x8, 0),
 	PERIPH_GATE(AX620E_PERIPH_PCLK_DMA, "pclk_dma", AX_GLB_NO_PARENT, 0xc, 11),
+	/* The first boot stage sets the SPI master mux ([12:11]) to cpll_208m. */
+	{ AX620E_PERIPH_CLK_SPI2, "spi2", AX_GLB_NO_PARENT, "cpll_208m", 0x4, 8 },
+	PERIPH_GATE(AX620E_PERIPH_PCLK_SPI2, "pclk_spi2", AX_GLB_NO_PARENT, 0x10, 4),
 };
 
 /* Each block has an APB reset and a core reset; they are used together. */
@@ -516,6 +519,7 @@ static const struct ax620e_glb_reset periph_resets[] = {
 	[AX620E_PERIPH_RST_I2S_S] = { 0x1c, BIT(9) },
 	[AX620E_PERIPH_RST_DMA_AXI] = { 0x18, BIT(1) },
 	[AX620E_PERIPH_RST_DMA_APB] = { 0x18, BIT(2) },
+	[AX620E_PERIPH_RST_SPI2] = { 0x20, BIT(2) | BIT(3) },
 };
 
 static const struct ax620e_glb_data ax620e_periph_sys_data = {
@@ -528,7 +532,7 @@ static const struct ax620e_glb_data ax620e_periph_sys_data = {
 	.num_gates = ARRAY_SIZE(periph_gates),
 	.resets = periph_resets,
 	.num_resets = ARRAY_SIZE(periph_resets),
-	.num_clks = AX620E_PERIPH_PCLK_DMA + 1,
+	.num_clks = AX620E_PERIPH_PCLK_SPI2 + 1,
 	.audio_routing = 0x3c,
 };
 
