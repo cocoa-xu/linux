@@ -49,6 +49,11 @@ static const struct expansion_mode expansion_modes[] = {
 
 #define EXPANSION_OFF	(&expansion_modes[0])
 
+/* The PWM core keeps these as the channels' labels. */
+static const char * const expansion_pwm_names[EXPANSION_LINES] = {
+	"line0", "line1",
+};
+
 struct expansion {
 	struct device *dev;
 	struct mutex lock;	/* serializes mode changes */
@@ -78,11 +83,9 @@ static int expansion_hold(struct expansion *ex,
 		}
 
 		if (!(mode->pwms & BIT(line)) && !ex->pwms[line]) {
-			char name[] = "line0";
 			struct pwm_device *pwm;
 
-			name[4] += line;
-			pwm = pwm_get(ex->dev, name);
+			pwm = pwm_get(ex->dev, expansion_pwm_names[line]);
 			if (IS_ERR(pwm))
 				return PTR_ERR(pwm);
 			ex->pwms[line] = pwm;
