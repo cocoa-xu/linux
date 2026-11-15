@@ -763,6 +763,8 @@ The uac2 function provides these attributes in its function directory:
 	p_volume_max     playback volume control max value (in 1/256 dB)
 	p_volume_res     playback volume control resolution (in 1/256 dB)
 	p_hs_bint        playback bInterval for HS/SS (1-4: fixed, 0: auto)
+	int_ep_present   interrupt endpoint enable, which tells the host of
+	                 control changes the gadget makes
 	req_number       the number of pre-allocated request for both capture
 	                 and playback
 	function_name    name of the interface

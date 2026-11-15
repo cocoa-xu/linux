@@ -34,6 +34,7 @@
 
 #define UAC2_DEF_REQ_NUM 2
 #define UAC2_DEF_INT_REQ_NUM	10
+#define UAC2_DEF_INT_EP_PRESENT	1
 
 #define UAC2_DEF_P_TERM_TYPE 0x301
 	/* UAC_OUTPUT_TERMINAL_SPEAKER */
@@ -60,6 +61,7 @@ struct f_uac2_opts {
 
 	bool			c_mute_present;
 	bool			c_volume_present;
+	bool			int_ep_present;
 	s16				c_volume_min;
 	s16				c_volume_max;
 	s16				c_volume_res;

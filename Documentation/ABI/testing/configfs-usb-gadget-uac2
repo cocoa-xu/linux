@@ -34,6 +34,10 @@ Description:
 					(in 1/256 dB)
 		p_volume_res		playback volume control resolution
 					(in 1/256 dB)
+		int_ep_present		whether the interrupt endpoint is there that
+					tells the host of control changes the
+					gadget makes (needs a mute or volume
+					control)
 		req_number		the number of pre-allocated requests
 					for both capture and playback
 		function_name		name of the interface

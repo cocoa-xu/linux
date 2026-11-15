@@ -60,6 +60,9 @@
 				&& ((_opts)->c_mute_present \
 				|| (_opts)->c_volume_present))
 #define EPOUT_FBACK_IN_EN(_opts) ((_opts)->c_sync == USB_ENDPOINT_SYNC_ASYNC)
+/* The interrupt endpoint tells the host of control changes the gadget makes. */
+#define INT_EP_EN(_opts) ((FUIN_EN(_opts) || FUOUT_EN(_opts)) \
+				&& (_opts)->int_ep_present)
 
 struct f_uac2 {
 	struct g_audio g_audio;
@@ -883,7 +886,7 @@ static void setup_headers(struct f_uac2_opts *opts,
 	if (EPOUT_EN(opts))
 		headers[i++] = USBDHDR(&io_out_ot_desc);
 
-	if (FUOUT_EN(opts) || FUIN_EN(opts)) {
+	if (INT_EP_EN(opts)) {
 		headers[i++] = USBDHDR(ep_int_desc);
 		if (ep_int_desc_comp)
 			headers[i++] = USBDHDR(ep_int_desc_comp);
@@ -1218,7 +1221,7 @@ afunc_bind(struct usb_configuration *cfg, struct usb_function *fn)
 	}
 
 	std_ac_if_desc.bNumEndpoints = 0;
-	if (FUOUT_EN(uac2_opts) || FUIN_EN(uac2_opts)) {
+	if (INT_EP_EN(uac2_opts)) {
 		uac2->int_ep = usb_ep_autoconfig(gadget, &fs_ep_int_desc);
 		if (!uac2->int_ep) {
 			dev_err(dev, "%s:%d Error!\n", __func__, __LINE__);
@@ -1366,8 +1369,8 @@ afunc_bind(struct usb_configuration *cfg, struct usb_function *fn)
 	agdev->params.req_number = uac2_opts->req_number;
 	agdev->params.fb_max = uac2_opts->fb_max;
 
-	if (FUOUT_EN(uac2_opts) || FUIN_EN(uac2_opts))
-    agdev->notify = afunc_notify;
+	if (INT_EP_EN(uac2_opts))
+		agdev->notify = afunc_notify;
 
 	ret = g_audio_setup(agdev, "UAC2 PCM", "UAC2_Gadget");
 	if (ret)
@@ -2146,6 +2149,7 @@ UAC2_ATTRIBUTE(s16, p_volume_res);
 
 UAC2_ATTRIBUTE(bool, c_mute_present);
 UAC2_ATTRIBUTE(bool, c_volume_present);
+UAC2_ATTRIBUTE(bool, int_ep_present);
 UAC2_ATTRIBUTE(s16, c_volume_min);
 UAC2_ATTRIBUTE(s16, c_volume_max);
 UAC2_ATTRIBUTE(s16, c_volume_res);
@@ -2194,6 +2198,7 @@ static struct configfs_attribute *f_uac2_attrs[] = {
 
 	&f_uac2_opts_attr_c_mute_present,
 	&f_uac2_opts_attr_c_volume_present,
+	&f_uac2_opts_attr_int_ep_present,
 	&f_uac2_opts_attr_c_volume_min,
 	&f_uac2_opts_attr_c_volume_max,
 	&f_uac2_opts_attr_c_volume_res,
@@ -2269,6 +2274,7 @@ static struct usb_function_instance *afunc_alloc_inst(void)
 
 	opts->c_mute_present = UAC2_DEF_MUTE_PRESENT;
 	opts->c_volume_present = UAC2_DEF_VOLUME_PRESENT;
+	opts->int_ep_present = UAC2_DEF_INT_EP_PRESENT;
 	opts->c_volume_min = UAC2_DEF_MIN_DB;
 	opts->c_volume_max = UAC2_DEF_MAX_DB;
 	opts->c_volume_res = UAC2_DEF_RES_DB;
