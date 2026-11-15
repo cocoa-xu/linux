@@ -6,11 +6,13 @@
 
 /dts-v1/;
 
+#include <dt-bindings/clock/axera,ax620e-comm-glb.h>
 #include <dt-bindings/clock/axera,ax620e-flash-sys.h>
 #include <dt-bindings/clock/axera,ax620e-periph-sys.h>
 #include <dt-bindings/clock/axera,ax620e-vpu-sys.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
+#include <dt-bindings/reset/axera,ax620e-comm-glb.h>
 #include <dt-bindings/reset/axera,ax620e-flash-sys.h>
 #include <dt-bindings/reset/axera,ax620e-periph-sys.h>
 #include <dt-bindings/reset/axera,ax620e-vpu-sys.h>
@@ -229,6 +231,22 @@
 		compatible = "aicsemi,aic_bsp";
 	};
 
+	thermal-zones {
+		soc-thermal {
+			polling-delay = <2000>;
+			polling-delay-passive = <0>;
+			thermal-sensors = <&tsensor>;
+
+			trips {
+				soc-critical {
+					temperature = <120000>;
+					hysteresis = <0>;
+					type = "critical";
+				};
+			};
+		};
+	};
+
 	timer {
 		compatible = "arm,armv7-timer";
 		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(2) | IRQ_TYPE_LEVEL_HIGH)>,
@@ -245,6 +263,22 @@
 		#size-cells = <1>;
 		ranges;
 
+		/* Only the fields after the keys the SPL keeps in IRAM too. */
+		nvmem@780 {
+			compatible = "axera,ax620e-misc-info";
+			reg = <0x00000780 0x20>;
+
+			nvmem-layout {
+				compatible = "fixed-layout";
+				#address-cells = <1>;
+				#size-cells = <1>;
+
+				thm_vref: thm-vref@10 {
+					reg = <0x10 0x4>;
+				};
+			};
+		};
+
 		gic: interrupt-controller@1851000 {
 			compatible = "arm,gic-400";
 			reg = <0x01851000 0x1000>,
@@ -256,9 +290,27 @@
 			interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(2) | IRQ_TYPE_LEVEL_HIGH)>;
 		};
 
+		tsensor: temperature-sensor@2000000 {
+			compatible = "axera,ax620e-tsensor";
+			reg = <0x02000000 0x1000>;
+			interrupts = <GIC_SPI 61 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&comm_glb AX620E_COMM_PCLK_THM>,
+				 <&comm_glb AX620E_COMM_CLK_THM>;
+			resets = <&comm_glb AX620E_COMM_RST_THM_APB>,
+				 <&comm_glb AX620E_COMM_RST_THM>;
+			reset-names = "apb", "sensor";
+			nvmem-cells = <&thm_vref>;
+			nvmem-cell-names = "vref";
+			#thermal-sensor-cells = <0>;
+		};
+
 		comm_glb: syscon@2340000 {
 			compatible = "axera,ax620e-comm-glb", "syscon";
 			reg = <0x02340000 0x1000>;
+			clocks = <&cpll_24m>, <&pclk_top>;
+			clock-names = "cpll_24m", "pclk_top";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
 		};
 
 		gpio0: gpio@4800000 {
