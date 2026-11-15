@@ -140,6 +140,18 @@ config NVMEM_AN8855_EFUSE
 	  This driver can also be built as a module. If so, the module will
 	  be called nvmem-an8855-efuse.
 
+config NVMEM_AXERA_MISC_INFO
+	tristate "Axera AX620E chip information"
+	depends on ARCH_AXERA || COMPILE_TEST
+	depends on HAS_IOMEM
+	help
+	  Say y here to read the chip information that the SPL of Axera AX620E
+	  SoCs copies from the eFuses to IRAM: board and chip type, the unique
+	  ID and sensor calibration.
+
+	  This driver can also be built as a module. If so, the module will
+	  be called nvmem-axera-misc-info.
+
 config NVMEM_APPLE_EFUSES
 	tristate "Apple eFuse support"
 	depends on ARCH_APPLE || COMPILE_TEST
