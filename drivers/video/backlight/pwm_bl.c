@@ -166,11 +166,16 @@ static ssize_t pwm_period_ns_store(struct device *dev,
 
 	guard(mutex)(&bl->update_lock);
 
-	/* Scale the duty cycle along so that it never exceeds the period. */
+	/*
+	 * Scale the duty cycle along so that it never exceeds the period, and
+	 * enable the PWM so that its driver checks the period even while the
+	 * backlight is off; updating the status then sets what it needs.
+	 */
 	pwm_get_state(pb->pwm, &state);
-	state.duty_cycle = state.period ?
+	state.duty_cycle = state.enabled && state.period ?
 		mul_u64_u64_div_u64(state.duty_cycle, period, state.period) : 0;
 	state.period = period;
+	state.enabled = true;
 
 	ret = pwm_apply_might_sleep(pb->pwm, &state);
 	if (ret)
