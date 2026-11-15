@@ -1044,15 +1044,15 @@ afunc_bind(struct usb_configuration *cfg, struct usb_function *fn)
 	strings_fn[STR_USB_IT_CH].s = uac2_opts->c_it_ch_name;
 	strings_fn[STR_IO_OT].s = uac2_opts->c_ot_name;
 	strings_fn[STR_FU_OUT].s = uac2_opts->c_fu_vol_name;
-	strings_fn[STR_AS_OUT_ALT0].s = "Playback Inactive";
-	strings_fn[STR_AS_OUT_ALT1].s = "Playback Active";
+	strings_fn[STR_AS_OUT_ALT0].s = uac2_opts->c_alt0_name;
+	strings_fn[STR_AS_OUT_ALT1].s = uac2_opts->c_alt1_name;
 
 	strings_fn[STR_IO_IT].s = uac2_opts->p_it_name;
 	strings_fn[STR_IO_IT_CH].s = uac2_opts->p_it_ch_name;
 	strings_fn[STR_USB_OT].s = uac2_opts->p_ot_name;
 	strings_fn[STR_FU_IN].s = uac2_opts->p_fu_vol_name;
-	strings_fn[STR_AS_IN_ALT0].s = "Capture Inactive";
-	strings_fn[STR_AS_IN_ALT1].s = "Capture Active";
+	strings_fn[STR_AS_IN_ALT0].s = uac2_opts->p_alt0_name;
+	strings_fn[STR_AS_IN_ALT1].s = uac2_opts->p_alt1_name;
 
 	us = usb_gstrings_attach(cdev, fn_strings, ARRAY_SIZE(strings_fn));
 	if (IS_ERR(us))
@@ -2125,6 +2125,10 @@ UAC2_ATTRIBUTE_STRING(c_it_name);
 UAC2_ATTRIBUTE_STRING(c_it_ch_name);
 UAC2_ATTRIBUTE_STRING(c_ot_name);
 UAC2_ATTRIBUTE_STRING(c_fu_vol_name);
+UAC2_ATTRIBUTE_STRING(c_alt0_name);
+UAC2_ATTRIBUTE_STRING(c_alt1_name);
+UAC2_ATTRIBUTE_STRING(p_alt0_name);
+UAC2_ATTRIBUTE_STRING(p_alt1_name);
 
 UAC2_ATTRIBUTE(s16, p_terminal_type);
 UAC2_ATTRIBUTE(s16, c_terminal_type);
@@ -2169,6 +2173,10 @@ static struct configfs_attribute *f_uac2_attrs[] = {
 	&f_uac2_opts_attr_c_it_ch_name,
 	&f_uac2_opts_attr_c_ot_name,
 	&f_uac2_opts_attr_c_fu_vol_name,
+	&f_uac2_opts_attr_c_alt0_name,
+	&f_uac2_opts_attr_c_alt1_name,
+	&f_uac2_opts_attr_p_alt0_name,
+	&f_uac2_opts_attr_p_alt1_name,
 
 	&f_uac2_opts_attr_p_terminal_type,
 	&f_uac2_opts_attr_c_terminal_type,
@@ -2243,6 +2251,10 @@ static struct usb_function_instance *afunc_alloc_inst(void)
 	scnprintf(opts->c_it_ch_name, sizeof(opts->c_it_ch_name), "Playback Channels");
 	scnprintf(opts->c_ot_name, sizeof(opts->c_ot_name), "USBD In");
 	scnprintf(opts->c_fu_vol_name, sizeof(opts->c_fu_vol_name), "Playback Volume");
+	scnprintf(opts->c_alt0_name, sizeof(opts->c_alt0_name), "Playback Inactive");
+	scnprintf(opts->c_alt1_name, sizeof(opts->c_alt1_name), "Playback Active");
+	scnprintf(opts->p_alt0_name, sizeof(opts->p_alt0_name), "Capture Inactive");
+	scnprintf(opts->p_alt1_name, sizeof(opts->p_alt1_name), "Capture Active");
 
 	opts->p_terminal_type = UAC2_DEF_P_TERM_TYPE;
 	opts->c_terminal_type = UAC2_DEF_C_TERM_TYPE;

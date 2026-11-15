@@ -82,6 +82,10 @@ struct f_uac2_opts {
 	char			c_it_ch_name[USB_MAX_STRING_LEN];
 	char			c_ot_name[USB_MAX_STRING_LEN];
 	char			c_fu_vol_name[USB_MAX_STRING_LEN];
+	char			c_alt0_name[USB_MAX_STRING_LEN];
+	char			c_alt1_name[USB_MAX_STRING_LEN];
+	char			p_alt0_name[USB_MAX_STRING_LEN];
+	char			p_alt1_name[USB_MAX_STRING_LEN];
 
 	s16				p_terminal_type;
 	s16				c_terminal_type;

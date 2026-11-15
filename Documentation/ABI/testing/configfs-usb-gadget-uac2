@@ -46,6 +46,10 @@ Description:
 		c_it_ch_name		capture input first channel name
 		c_ot_name		capture output terminal name
 		c_fu_vol_name		capture mute/volume functional unit name
+		c_alt0_name		capture alt mode 0 (idle) interface name
+		c_alt1_name		capture alt mode 1 (streaming) interface name
+		p_alt0_name		playback alt mode 0 (idle) interface name
+		p_alt1_name		playback alt mode 1 (streaming) interface name
 		c_terminal_type		code of the capture terminal type
 		p_terminal_type		code of the playback terminal type
 		=====================	=======================================
