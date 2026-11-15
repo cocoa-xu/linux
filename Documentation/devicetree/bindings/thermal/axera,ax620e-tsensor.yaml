@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/thermal/axera,ax620e-tsensor.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Axera AX620E temperature sensor
+
+maintainers:
+  - Cocoa <i@uwucocoa.moe>
+
+description:
+  The on-die temperature sensor of Axera AX620E SoCs, which shares a
+  monitor block with the general purpose ADC.
+
+allOf:
+  - $ref: thermal-sensor.yaml#
+
+properties:
+  compatible:
+    const: axera,ax620e-tsensor
+
+  reg:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    items:
+      - description: APB clock
+      - description: Sensor clock
+
+  resets:
+    items:
+      - description: APB reset
+      - description: Sensor reset
+
+  reset-names:
+    items:
+      - const: apb
+      - const: sensor
+
+  nvmem-cells:
+    items:
+      - description: Reference trim from the eFuses
+
+  nvmem-cell-names:
+    items:
+      - const: vref
+
+  '#thermal-sensor-cells':
+    const: 0
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - resets
+  - reset-names
+
+unevaluatedProperties: false
+
+examples:
+  - |
+    #include <dt-bindings/clock/axera,ax620e-comm-glb.h>
+    #include <dt-bindings/interrupt-controller/arm-gic.h>
+    #include <dt-bindings/reset/axera,ax620e-comm-glb.h>
+
+    temperature-sensor@2000000 {
+        compatible = "axera,ax620e-tsensor";
+        reg = <0x02000000 0x1000>;
+        interrupts = <GIC_SPI 61 IRQ_TYPE_LEVEL_HIGH>;
+        clocks = <&comm_glb AX620E_COMM_PCLK_THM>,
+                 <&comm_glb AX620E_COMM_CLK_THM>;
+        resets = <&comm_glb AX620E_COMM_RST_THM_APB>,
+                 <&comm_glb AX620E_COMM_RST_THM>;
+        reset-names = "apb", "sensor";
+        nvmem-cells = <&thm_vref>;
+        nvmem-cell-names = "vref";
+        #thermal-sensor-cells = <0>;
+    };
