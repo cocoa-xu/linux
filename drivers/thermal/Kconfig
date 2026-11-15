@@ -518,6 +518,18 @@ config KHADAS_MCU_FAN_THERMAL
 	  If you say yes here you get support for the FAN controlled
 	  by the Microcontroller found on the Khadas VIM boards.
 
+config AX620E_THERMAL
+	tristate "Axera AX620E temperature sensor"
+	depends on ARCH_AXERA || COMPILE_TEST
+	depends on OF && HAS_IOMEM
+	help
+	  Support for the on-die temperature sensor of Axera AX620E SoCs,
+	  which reports the die temperature to the thermal framework, so
+	  that a critical trip point can shut the system down in time.
+
+	  This driver can also be built as a module. If so, the module will
+	  be called ax620e_thermal.
+
 config LOONGSON2_THERMAL
 	tristate "Loongson-2 SoC series thermal driver"
 	depends on LOONGARCH || COMPILE_TEST
